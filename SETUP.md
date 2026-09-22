@@ -58,22 +58,27 @@ Do not install it into this environment without re-verifying the numpy/pandas pi
 Not installed yet — not needed until Phase 3a (~week 14). When you get there, install
 the CUDA build matching your GPU from pytorch.org rather than the default CPU wheel.
 
-## Coordinate systems — read before building the state layer
+## Coordinate systems
 
 kloppy's default coordinate system is **normalized [0, 1] on both axes**.
 
-ROLES.md specifies **centre-origin [-1, +1]**, because that makes mirror augmentation a
-trivial `y -> -y` and keeps the pitch symmetric about the origin.
+**Canonical internal representation is metres, centre-origin** — see
+`src/footrack/pitch.py`. Not the per-axis `[-1, +1]` that ROLES.md §1 describes:
+normalizing each axis independently destroys the aspect ratio, because one x-unit would
+be 52.5m and one y-unit 34m. Every distance, speed and pitch-control value would be
+anisotropic. Metres keeps distances real and velocities in m/s, directly comparable to
+the max-speed figures the capability model reads from GPS vests.
 
-The conversion belongs in the state layer, applied once on ingest:
+Two normalized views exist for the cases where normalization is actually correct:
 
-```
-x_centred = 2 * x_kloppy - 1
-y_centred = 2 * y_kloppy - 1
-```
+| Function | Purpose |
+|---|---|
+| `to_model_scale` | Both axes / HALF_LENGTH. **Isotropic** — this is what the model consumes |
+| `to_axis_norm` | Per-axis [-1, 1]. Channel and third lookups only — never distances |
 
-Do this at the boundary, not scattered through the codebase, and make attack-direction
-normalization part of the same step.
+Conversion happens once at ingest in `sources.py`, alongside attack-direction
+normalization (kloppy's `STATIC_HOME_AWAY` orientation), not scattered through the
+codebase.
 
 ## Layout
 

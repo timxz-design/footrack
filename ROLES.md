@@ -11,7 +11,7 @@ L4 role embeddings.
 
 ## 1. Coordinate convention
 
-Normalized, centre-origin, attack-direction normalized (always attacking +x):
+Centre-origin, attack-direction normalized (always attacking +x):
 
 ```
   x ∈ [-1, +1]    -1 = own goal line,  +1 = opponent goal line
@@ -20,7 +20,14 @@ Normalized, centre-origin, attack-direction normalized (always attacking +x):
 
 Mirror augmentation is then simply `y -> -y` (MODEL.md §3.3).
 
-Conversion on a 105 x 68m pitch: `x_m = (x+1)/2 * 105`, `y_m = y * 34`.
+Conversion on a 105 x 68m pitch: `x_m = x * 52.5`, `y_m = y * 34`.
+
+> **Note (implementation).** This per-axis normalization is used **only for the channel
+> and third lookups below**, where it is the natural frame. It is deliberately *not* the
+> storage format: normalizing each axis independently destroys the aspect ratio (one
+> x-unit is 52.5m, one y-unit 34m), which would make every distance and speed
+> anisotropic. The canonical representation is **metres, centre-origin** — see
+> `src/footrack/pitch.py` and SETUP.md.
 
 **Five-channel model** for the y axis, used throughout:
 
