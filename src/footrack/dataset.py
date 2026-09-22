@@ -232,16 +232,29 @@ def collate(samples: list[TrainingSample]) -> dict[str, np.ndarray]:
     }
 
 
-def constant_velocity_baseline(sample: TrainingSample, frame_rate: float) -> np.ndarray:
-    """(F, 23, 2) positions predicted by extrapolating the last velocity.
+def constant_velocity_batch(
+    entity: np.ndarray, anchor: np.ndarray, horizon: int, frame_rate: float
+) -> np.ndarray:
+    """(B, F, 23, 2) positions from extrapolating each entity's last velocity.
 
     The baseline the world model must beat before it is worth anything
     (MODEL.md §9, stage S1 gate). Roughly right over ~400ms and increasingly
-    wrong beyond that, which is precisely the gap a learned model should close.
+    wrong beyond that, which is precisely the gap a learned model should close —
+    most of all on the ball, whose futures are genuinely multimodal.
     """
     from footrack.features import SPEED_SCALE
 
-    last_vel = sample.inputs.entity[-1, :, 2:4] * SPEED_SCALE  # m/s
-    steps = np.arange(1, sample.target_positions.shape[0] + 1, dtype=np.float32)
-    drift = steps[:, None, None] * last_vel[None, :, :] / frame_rate
-    return sample.anchor[None, :, :] + drift / POS_SCALE
+    last_vel = entity[:, -1, :, 2:4] * SPEED_SCALE  # (B, N, 2) m/s
+    steps = np.arange(1, horizon + 1, dtype=np.float32)
+    drift = steps[None, :, None, None] * last_vel[:, None, :, :] / frame_rate
+    return anchor[:, None, :, :] + drift / POS_SCALE
+
+
+def constant_velocity_baseline(sample: TrainingSample, frame_rate: float) -> np.ndarray:
+    """(F, 23, 2) single-sample form of :func:`constant_velocity_batch`."""
+    return constant_velocity_batch(
+        sample.inputs.entity[None],
+        sample.anchor[None],
+        sample.target_positions.shape[0],
+        frame_rate,
+    )[0]

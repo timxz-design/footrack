@@ -20,6 +20,20 @@ Or skip activation entirely and call the interpreter directly:
 
 Loads Metrica match 1 through kloppy and writes `outputs/verify_frame.png`.
 
+## Scripts
+
+| Script | Purpose |
+|---|---|
+| `verify_setup.py` | Environment check — loads a match, renders one frame |
+| `replay.py` | Animated replay with velocity vectors |
+| `build_cache.py` | Parse and cache matches, report dataset and baseline stats |
+| `inspect_features.py` | Per-feature ranges; flags anything leaking through the mask |
+| `train.py` | Stage S1 pretraining |
+
+**Run long scripts unbuffered** (`python -u`) if you want to watch progress — Python
+block-buffers stdout when it is not attached to a terminal, so a training run redirected
+to a file shows nothing until it finishes.
+
 ## What is installed
 
 Python **3.12.1** (not 3.13 — the sports-analytics stack has patchier wheel coverage there).
@@ -55,8 +69,33 @@ Do not install it into this environment without re-verifying the numpy/pandas pi
 
 ## PyTorch
 
-Not installed yet — not needed until Phase 3a (~week 14). When you get there, install
-the CUDA build matching your GPU from pytorch.org rather than the default CPU wheel.
+Installed: **2.6.0+cu124**, chosen because CUDA 12.4 wheels still ship Pascal kernels.
+
+```powershell
+.venv\Scripts\python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cu124
+```
+
+### This machine's GPU
+
+| | |
+|---|---|
+| Device | GeForce GTX 1050, 4 GB |
+| Capability | sm_61 (Pascal) — present in this wheel's arch list |
+| Measured | **~0.56 TFLOPS fp32** |
+| Training | ~200 s/epoch on 14.4k windows, batch 32, 1.15M params |
+
+**Do not enable mixed precision here.** `torch.cuda.is_bf16_supported()` returns True,
+but Pascal has no bf16 hardware — that is emulation, and it runs *slower* than fp32.
+Pascal also has no Tensor Cores, so fp16 buys nothing either. Autocast is a real
+speedup on Ampere and later; on this card it is a pessimisation.
+
+**What this card can and cannot do.** It is enough to validate the architecture, debug
+the training loop, and run small experiments on a couple of matches. It is roughly
+50-100x slower than a current training GPU, so the full 84-match pretraining run
+belongs on rented hardware or the machine in PLAN.md §5. Budget accordingly rather than
+discovering it mid-run.
+
+Checkpoints land in `checkpoints/` (gitignored).
 
 ## Coordinate systems
 

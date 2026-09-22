@@ -146,9 +146,52 @@ Football futures are genuinely multimodal. The ball goes left *or* right; the av
 of those is a position no one should ever occupy. A single-mode model trained with MSE
 produces exactly the centroid-drift mush that makes trajectory models worthless.
 
-**Use K modes (3-6) with a min-over-K variety loss** — only the closest mode receives
+**Use K modes (3-6) with a variety loss** — the closest mode receives most of the
 gradient — plus a cross-entropy over mode logits. Simple and stable at this data
 scale; CVAE or diffusion heads are not worth it below ~1000 matches.
+
+> **Measured correction — two distinct failures, found in sequence.**
+>
+> **1. Pure winner-take-all starves the losers.** Giving gradient *only* to the closest
+> mode meant whichever mode was best early won every sample and took all the gradient.
+> After two epochs one mode won 100% of validation windows with the other five stranded
+> at initialisation, 28m from anything sensible. Fixed with **relaxed winner-take-all**:
+> the winner takes `1 - epsilon`, losers share `epsilon` (default 0.05).
+>
+> **2. A pooled selection metric drowns out the ball.** After fixing (1), collapse
+> persisted — still 1 of 6 modes. But the modes were *not* collapsed; the metric was
+> blind. Selecting on all 23 entities used 1 mode; selecting on the ball alone used all
+> 6, with a realistic distribution. The 22 predictable players carry **~87%** of the
+> pooled error, so the mode fitting *them* best wins regardless of what it does with the
+> ball — and the ball is the only entity whose future is genuinely multimodal.
+>
+> Fixed by scoring ball and players separately and combining with
+> `ball_selection_weight` (default **1.0** — 0.5 was measured and still collapsed). The
+> trajectory loss still covers every entity; only the choice of winner is reweighted.
+> This is also the semantically right framing: the ball's future largely determines the
+> players' futures, so "which mode is this scene in" mostly means "where does the ball go".
+>
+> **It costs accuracy.** At matched epochs on two matches, weight 1.0 raised effective
+> mode count from 1.0 to ~2.4 and cost ~10% displacement error — the winner is chosen for
+> ball fit but trained on all 23 entities, so its gradient is less focused. Taken anyway:
+> collapse discards multimodality entirely, wasting five of six modes and leaving no
+> uncertainty estimate, which removes the predicted-futures feature and the honest-
+> uncertainty story. Revisit on the full corpus.
+>
+> **Two general lessons:**
+>
+> 1. Mode diversity and mode *selection* are separate problems. A collapsed winner
+>    distribution does not prove the modes collapsed — measure inter-mode spread before
+>    concluding. The epsilon fix looked like a failure when it had in fact worked.
+> 2. Count modes by **perplexity of the winner distribution**, not by how many are
+>    non-zero. `[1170, 1360, 70, 65, 42, 109]` reads as "6/6 alive" while being ~2.7
+>    effective modes.
+>
+> **Open, and not resolvable on two matches: K=6 is over-provisioned for a 2s horizon.**
+> Effective mode count sits at ~2.4 even with clean selection, because over two seconds
+> the ball mostly continues — the bifurcations that would justify six modes play out over
+> longer windows. Either drop K to 3-4 or extend the horizon. Decide on the full corpus;
+> forcing six modes into balanced use on this much data would be fitting noise.
 
 This is also a pedagogical gift. Show the coach: *"the model sees three things that
 could happen here — this position covers all three."* That is precisely how coaches
