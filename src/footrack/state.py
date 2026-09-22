@@ -17,6 +17,7 @@ Positions are metres, centre-origin (see :mod:`footrack.pitch`).
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from enum import IntEnum
 from typing import Sequence as TypingSequence
 
 import numpy as np
@@ -25,6 +26,24 @@ N_ENTITIES = 23
 BALL = 0
 TEAM_A = slice(1, 12)
 TEAM_B = slice(12, 23)
+
+
+class Phase(IntEnum):
+    """Phase of play, from the advised team's perspective.
+
+    Part of the canonical state rather than a derived feature: the architecture
+    puts phase classification in L0 (MODEL.md §L0), because every layer above it
+    conditions on knowing which phase it is in.
+    """
+
+    UNKNOWN = 0
+    IN_POSSESSION = 1
+    OUT_OF_POSSESSION = 2
+    TRANSITION = 3
+    SET_PIECE = 4
+
+
+N_PHASES = len(Phase)
 
 
 @dataclass(frozen=True)
@@ -78,6 +97,7 @@ class Sequence:
     match_id: str
     period_id: int
     ball_owning_slot_block: np.ndarray | None = None  # (T,) int8: 0=A, 1=B, -1=unknown
+    phase: np.ndarray | None = None  # (T,) int8 of Phase; None when undetermined
 
     def __post_init__(self) -> None:
         t = self.positions.shape[0]
@@ -134,6 +154,17 @@ class Sequence:
         if owning is not None:
             owning = np.where(owning < 0, owning, 1 - owning).astype(np.int8)
 
+        # Phase is defined from the advised team's perspective, so in- and
+        # out-of-possession exchange. Transition, set piece and unknown are
+        # symmetric and stay put.
+        phase = self.phase
+        if phase is not None:
+            phase = np.select(
+                [phase == Phase.IN_POSSESSION, phase == Phase.OUT_OF_POSSESSION],
+                [Phase.OUT_OF_POSSESSION, Phase.IN_POSSESSION],
+                default=phase,
+            ).astype(np.int8)
+
         return replace(
             self,
             positions=swap_entities(pos),
@@ -142,6 +173,7 @@ class Sequence:
             mask=swap_entities(self.mask),
             slots=self.slots.swapped(),
             ball_owning_slot_block=owning,
+            phase=phase,
         )
 
     def window(self, start: int, length: int) -> Sequence:
@@ -158,6 +190,7 @@ class Sequence:
             mask=self.mask[start:stop],
             frame_ids=self.frame_ids[start:stop],
             ball_owning_slot_block=None if owning is None else owning[start:stop],
+            phase=None if self.phase is None else self.phase[start:stop],
         )
 
     def downsample(self, factor: int) -> Sequence:
@@ -178,6 +211,7 @@ class Sequence:
             frame_ids=self.frame_ids[::factor],
             frame_rate=self.frame_rate / factor,
             ball_owning_slot_block=None if owning is None else owning[::factor],
+            phase=None if self.phase is None else self.phase[::factor],
         )
 
     # -- convenience ----------------------------------------------------------

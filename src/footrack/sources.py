@@ -15,7 +15,10 @@ from scipy.ndimage import binary_dilation
 from scipy.signal import savgol_filter
 
 from footrack import pitch
-from footrack.state import BALL, N_ENTITIES, Sequence, SlotMap
+from footrack.state import BALL, N_ENTITIES, Phase, Sequence, SlotMap
+
+# Frames either side of a possession change that count as transition.
+TRANSITION_WINDOW_S = 3.0
 
 # How far ahead to look when deciding a segment's slot assignment. Long enough
 # to see past broadcast gaps, short enough not to swallow a substitution.
@@ -42,6 +45,43 @@ class TrackingSource(ABC):
     @abstractmethod
     def load(self) -> list[Sequence]:
         """Return all sequences available from this source."""
+
+
+def derive_phase(
+    owning: np.ndarray | None,
+    set_piece: np.ndarray | None,
+    frame_rate: float,
+    length: int,
+) -> np.ndarray:
+    """(T,) int8 phase from possession, with hysteresis at turnovers.
+
+    Naive frame-wise classification flickers badly at turnovers (MODEL.md §L0),
+    so a window either side of each possession change is labelled TRANSITION
+    rather than flipping instantly between possession states. Set pieces take
+    precedence, since a restart is a restart regardless of who holds the ball.
+    """
+    if owning is None:
+        phase = np.full(length, Phase.UNKNOWN, dtype=np.int8)
+    else:
+        phase = np.select(
+            [owning == 0, owning == 1],
+            [Phase.IN_POSSESSION, Phase.OUT_OF_POSSESSION],
+            default=Phase.UNKNOWN,
+        ).astype(np.int8)
+
+        known = owning >= 0
+        changed = np.zeros(length, dtype=bool)
+        changed[1:] = known[1:] & known[:-1] & (owning[1:] != owning[:-1])
+
+        if changed.any():
+            half = max(1, int(round(TRANSITION_WINDOW_S * frame_rate / 2)))
+            spread = binary_dilation(changed, structure=np.ones(2 * half + 1, dtype=bool))
+            phase[spread & known] = Phase.TRANSITION
+
+    if set_piece is not None:
+        phase[set_piece] = Phase.SET_PIECE
+
+    return phase
 
 
 def _velocities(
@@ -131,7 +171,13 @@ class KloppySource(TrackingSource):
     team instead.
     """
 
-    def __init__(self, dataset, match_id: str = "unknown", min_frames: int = 50):
+    def __init__(
+        self,
+        dataset,
+        match_id: str = "unknown",
+        min_frames: int = 50,
+        events=None,
+    ):
         from kloppy.domain import Orientation
 
         if dataset.metadata.orientation != Orientation.STATIC_HOME_AWAY:
@@ -140,6 +186,7 @@ class KloppySource(TrackingSource):
         self.dataset = dataset
         self.match_id = match_id
         self.min_frames = min_frames
+        self.events = events
 
         grounds = {t.team_id: str(t.ground) for t in dataset.metadata.teams}
         self._home_ids = {tid for tid, g in grounds.items() if g == "home"}
@@ -247,6 +294,19 @@ class KloppySource(TrackingSource):
         frame_rate = float(self.dataset.metadata.frame_rate)
         velocities, velocity_valid = _velocities(positions, mask, frame_rate)
 
+        # An event feed, where available, supplies possession that tracking
+        # alone cannot. Team A is the home side by construction here.
+        set_piece = None
+        if self.events is not None:
+            from footrack.events import possession_series, set_piece_series
+
+            owning = possession_series(self.events, frame_ids, home_is_team_a=True)
+            set_piece = set_piece_series(self.events, frame_ids, frame_rate)
+
+        phase = derive_phase(
+            owning if (owning >= 0).any() else None, set_piece, frame_rate, t
+        )
+
         return Sequence(
             positions=positions,
             velocities=velocities,
@@ -258,15 +318,33 @@ class KloppySource(TrackingSource):
             match_id=self.match_id,
             period_id=period_id,
             ball_owning_slot_block=owning if (owning >= 0).any() else None,
+            phase=phase,
         )
 
 
-def load_metrica(match_id: int = 1, limit: int | None = None) -> list[Sequence]:
-    """Convenience loader for Metrica open data — the cleanest starting point."""
+def load_metrica(
+    match_id: int = 1, limit: int | None = None, with_events: bool = True
+) -> list[Sequence]:
+    """Convenience loader for Metrica open data — the cleanest starting point.
+
+    ``with_events`` fetches the matching event feed to derive possession and
+    phase. Without it every frame is phase UNKNOWN, because kloppy's Metrica
+    tracking loader carries no ball ownership.
+    """
     from kloppy import metrica
 
     kwargs = {"match_id": match_id}
     if limit is not None:
         kwargs["limit"] = limit
     dataset = metrica.load_open_data(**kwargs)
-    return KloppySource(dataset, match_id=f"metrica_{match_id}").load()
+
+    events = None
+    if with_events:
+        from footrack.events import load_metrica_events
+
+        try:
+            events = load_metrica_events(match_id)
+        except Exception as exc:  # network or unavailable match
+            print(f"warning: event feed unavailable ({exc}); phase will be UNKNOWN")
+
+    return KloppySource(dataset, match_id=f"metrica_{match_id}", events=events).load()
