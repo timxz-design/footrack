@@ -1,0 +1,29 @@
+# Environment
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Data — never commit tracking datasets
+data/raw/
+data/processed/
+*.jsonl.bz2
+*.parquet
+
+# Model artifacts
+checkpoints/
+runs/
+wandb/
+*.pt
+*.ckpt
+
+# Output
+outputs/
+*.mp4
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

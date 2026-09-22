@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.parquet binary
+*.bz2 binary
+*.pt binary
+*.ckpt binary
