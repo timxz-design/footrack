@@ -22,6 +22,14 @@ from footrack.features import (
     build,
     estimate_profiles,
 )
+from footrack.cache import cached, cached_metrica, load_sequences, save_sequences
+from footrack.dataset import (
+    TrainingSample,
+    WindowDataset,
+    collate,
+    constant_velocity_baseline,
+    split_by_match,
+)
 
 __all__ = [
     "BALL",
@@ -46,4 +54,13 @@ __all__ = [
     "PlayerProfile",
     "build",
     "estimate_profiles",
+    "cached",
+    "cached_metrica",
+    "load_sequences",
+    "save_sequences",
+    "TrainingSample",
+    "WindowDataset",
+    "collate",
+    "constant_velocity_baseline",
+    "split_by_match",
 ]
