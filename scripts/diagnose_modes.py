@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from footrack import WindowDataset, cached_metrica, estimate_profiles, split_by_match
+from footrack.dataset import standard_datasets
 from footrack.features import POS_SCALE
 from footrack.model import Footrack, ModelConfig
 
@@ -47,12 +47,7 @@ def main() -> None:
     model.load_state_dict(ck["state"])
     print(f"checkpoint from epoch {ck.get('epoch', '?')}, K={cfg.n_modes}")
 
-    seqs = []
-    for i in (1, 2):
-        seqs.extend(cached_metrica(i, root=ROOT / "data" / "processed"))
-    train_seqs, val_seqs = split_by_match(seqs, val_matches=["metrica_2"])
-    val = WindowDataset(val_seqs, history=25, horizon=20, stride=25, target_rate=10.0,
-                        augment=False, profiles=estimate_profiles(train_seqs), seed=0)
+    _, val, _ = standard_datasets(ROOT / "data" / "processed")
 
     wins = {"all entities": [], "ball only": [], "players only": []}
     err_ball, err_players, spreads = [], [], []

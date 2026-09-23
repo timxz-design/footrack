@@ -23,12 +23,21 @@ from footrack.features import (
     estimate_profiles,
 )
 from footrack.cache import cached, cached_metrica, load_sequences, save_sequences
+from footrack.roles import (
+    N_BASE_ROLES,
+    Role,
+    build_player_index,
+    infer_roles,
+    role_id_array,
+    summarise,
+)
 from footrack.dataset import (
     TrainingSample,
     WindowDataset,
     collate,
     constant_velocity_baseline,
     split_by_match,
+    standard_datasets,
 )
 
 __all__ = [
@@ -54,6 +63,12 @@ __all__ = [
     "PlayerProfile",
     "build",
     "estimate_profiles",
+    "N_BASE_ROLES",
+    "Role",
+    "build_player_index",
+    "infer_roles",
+    "role_id_array",
+    "summarise",
     "cached",
     "cached_metrica",
     "load_sequences",
@@ -63,4 +78,5 @@ __all__ = [
     "collate",
     "constant_velocity_baseline",
     "split_by_match",
+    "standard_datasets",
 ]

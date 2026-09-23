@@ -103,6 +103,8 @@ class WindowDataset:
         min_coverage: float = 0.6,
         augment: bool = False,
         profiles: dict[str, PlayerProfile] | None = None,
+        roles: dict[str, int] | None = None,
+        player_index: dict[str, int] | None = None,
         seed: int = 0,
     ):
         if history < 1 or horizon < 1:
@@ -112,6 +114,8 @@ class WindowDataset:
         self.horizon = horizon
         self.augment = augment
         self.profiles = profiles
+        self.roles = roles
+        self.player_index = player_index
         self.rng = np.random.default_rng(seed)
 
         span = history + horizon
@@ -160,8 +164,15 @@ class WindowDataset:
             anchor_valid[:, None], hist.positions[-1] / POS_SCALE, 0.0
         ).astype(np.float32)
 
+        role_ids = None
+        if self.roles is not None:
+            from footrack.roles import role_id_array
+
+            role_ids = role_id_array(hist.slots, self.roles)
+
         return TrainingSample(
-            inputs=build(hist, profiles=self.profiles),
+            inputs=build(hist, profiles=self.profiles, role_ids=role_ids,
+                         player_index=self.player_index),
             target_positions=(future.positions / POS_SCALE).astype(np.float32),
             target_mask=future.mask.copy(),
             anchor=anchor,
@@ -230,6 +241,52 @@ def collate(samples: list[TrainingSample]) -> dict[str, np.ndarray]:
         "anchor": np.stack([s.anchor for s in samples]),
         "anchor_valid": np.stack([s.anchor_valid for s in samples]),
     }
+
+
+def standard_datasets(
+    cache_root,
+    matches: tuple[int, ...] = (1, 2),
+    val_matches: TypingSequence[str] = ("metrica_2",),
+    history: int = 25,
+    horizon: int = 20,
+    target_rate: float = 10.0,
+    train_stride: int = 5,
+    val_stride: int = 25,
+) -> tuple["WindowDataset", "WindowDataset", dict]:
+    """Build the canonical train/val datasets used by every script.
+
+    Exists because the same twelve lines were repeated across training,
+    visualisation, diagnostics and the labelling server — and a feature added to
+    one would silently be missing from the others. That is exactly how role and
+    player identity stayed unset through several training runs.
+
+    Profiles are estimated from **training matches only**; estimating them over
+    the validation match would leak player capability into evaluation. Roles and
+    the player index are built over all matches, since they are identity
+    lookups rather than learned statistics.
+    """
+    from footrack.cache import cached_metrica
+    from footrack.features import estimate_profiles
+    from footrack.roles import build_player_index, infer_roles
+
+    sequences = []
+    for m in matches:
+        sequences.extend(cached_metrica(m, root=cache_root))
+
+    train_seqs, val_seqs = split_by_match(sequences, val_matches=list(val_matches))
+
+    shared = dict(
+        history=history,
+        horizon=horizon,
+        target_rate=target_rate,
+        profiles=estimate_profiles(train_seqs),
+        roles=infer_roles(sequences),
+        player_index=build_player_index(sequences),
+        seed=0,
+    )
+    train = WindowDataset(train_seqs, stride=train_stride, augment=True, **shared)
+    val = WindowDataset(val_seqs, stride=val_stride, augment=False, **shared)
+    return train, val, shared
 
 
 def constant_velocity_batch(

@@ -294,6 +294,24 @@ CF  target / pressing 9 depending on out-of-possession role
 Each role carries: reference position in L1, default constraints in L2, objective
 weights in L3, and a learned embedding in L4.
 
+> **Measured: the role embedding was never populated.** For several training runs
+> `role_ids` was zero and `player_ids` was -1 for every player, so the model was asked to
+> place a hidden player knowing only their team and physical profile. Its reconstructions
+> collapsed onto a single lateral line, and its one reliable guess was the goalkeeper —
+> inferred from being slow, the only identity signal that reached it.
+>
+> Populating both (roles inferred from average position, see `footrack/roles.py`) cut
+> reconstruction error from 14.9m to 11.8m against an 18.7m centroid baseline, and
+> reached the previous run's final quality by epoch 3 of 6. Forecast error barely moved:
+> identity helps you infer *where someone is*, not how they are moving.
+>
+> **Still open — base roles do not encode side.** A left-back and a right-back are both
+> `FB`, so lateral spread recovered only from 0.8m to 2.9m across a 68m pitch. Which wing
+> a player occupies is meant to come from the tendency embedding, which is now wired but
+> starts at zero and needs far more than two matches per player. Encoding side in the
+> role instead would work, but mirror augmentation would then have to swap left and right
+> roles as it flips y — a real interaction to handle, not a free addition.
+
 ### 5.2 Player representation — factorized, not ID-based
 
 **The cold-start trap:** a learned embedding per player ID works beautifully in

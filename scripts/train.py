@@ -19,9 +19,12 @@ import torch
 
 from footrack import (
     WindowDataset,
+    build_player_index,
     cached_metrica,
     estimate_profiles,
+    infer_roles,
     split_by_match,
+    summarise,
 )
 from footrack.dataset import constant_velocity_batch
 from footrack.features import POS_SCALE
@@ -141,10 +144,17 @@ def main() -> None:
     train_seqs, val_seqs = split_by_match(sequences, val_matches=["metrica_2"])
     profiles = estimate_profiles(train_seqs)
 
-    train = WindowDataset(train_seqs, history=25, horizon=20, stride=5,
-                          target_rate=TARGET_RATE, augment=True, profiles=profiles, seed=0)
-    val = WindowDataset(val_seqs, history=25, horizon=20, stride=25,
-                        target_rate=TARGET_RATE, augment=False, profiles=profiles, seed=0)
+    # Roles are inferred per match from average position: public data carries no
+    # role labels, and without them every player looks identical to the model
+    # apart from their team and physical profile.
+    roles = infer_roles(sequences)
+    player_index = build_player_index(sequences)
+    print(f"roles inferred for {len(roles)} players: {summarise(sequences, roles)}")
+
+    shared = dict(history=25, horizon=20, target_rate=TARGET_RATE, profiles=profiles,
+                  roles=roles, player_index=player_index, seed=0)
+    train = WindowDataset(train_seqs, stride=5, augment=True, **shared)
+    val = WindowDataset(val_seqs, stride=25, augment=False, **shared)
     print(f"train {len(train)} windows / val {len(val)} windows")
 
     cfg = ModelConfig(d_model=args.d_model, depth=args.depth, horizon=20)

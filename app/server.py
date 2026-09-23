@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from footrack import WindowDataset, cached_metrica, estimate_profiles, split_by_match
+from footrack.dataset import WindowDataset, standard_datasets
 from footrack.features import POS_SCALE
 from footrack.labeling import Correction, Label, LabelStore
 from footrack.model import OBSERVATION_SLICE, PRESENT_COL, Footrack, ModelConfig
@@ -40,14 +40,8 @@ _state: dict = {}
 
 
 def _load() -> None:
-    sequences = []
-    for m in (1, 2):
-        sequences.extend(cached_metrica(m, root=ROOT / "data" / "processed"))
-    train_seqs, val_seqs = split_by_match(sequences, val_matches=["metrica_2"])
-
-    dataset = WindowDataset(
-        val_seqs, history=HISTORY, horizon=HORIZON, stride=10, target_rate=10.0,
-        augment=False, profiles=estimate_profiles(train_seqs), seed=0,
+    _, dataset, _ = standard_datasets(
+        ROOT / "data" / "processed", history=HISTORY, horizon=HORIZON, val_stride=10
     )
 
     # Only serve frames where the ball is tracked. It is absent in ~40% of

@@ -29,7 +29,7 @@ import numpy as np
 import torch
 from mplsoccer import Pitch
 
-from footrack import WindowDataset, cached_metrica, estimate_profiles, split_by_match
+from footrack.dataset import WindowDataset, standard_datasets
 from footrack.features import POS_SCALE
 from footrack.model import Footrack, ModelConfig, apply_agent_masking
 from footrack.pitch import to_kloppy
@@ -183,12 +183,7 @@ def main() -> None:
     model = Footrack(ModelConfig(**ck["cfg"])).to(args.device).eval()
     model.load_state_dict(ck["state"])
 
-    seqs = []
-    for i in (1, 2):
-        seqs.extend(cached_metrica(i, root=ROOT / "data" / "processed"))
-    train_seqs, val_seqs = split_by_match(seqs, val_matches=["metrica_2"])
-    val = WindowDataset(val_seqs, history=25, horizon=20, stride=25, target_rate=10.0,
-                        augment=False, profiles=estimate_profiles(train_seqs), seed=0)
+    _, val, _ = standard_datasets(ROOT / "data" / "processed")
 
     OUT.mkdir(exist_ok=True)
     sample = val[args.window]
