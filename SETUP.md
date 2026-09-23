@@ -29,6 +29,30 @@ Loads Metrica match 1 through kloppy and writes `outputs/verify_frame.png`.
 | `build_cache.py` | Parse and cache matches, report dataset and baseline stats |
 | `inspect_features.py` | Per-feature ranges; flags anything leaking through the mask |
 | `train.py` | Stage S1 pretraining |
+| `visualize_predictions.py` | Render forecasts and reconstructions — run after any model change |
+| `diagnose_modes.py` | Mode usage, diversity and effective count |
+
+## Labelling tool
+
+```powershell
+$env:FOOTRACK_LABELER = "your-name"
+.venv\Scripts\python.exe -m uvicorn app.server:app --port 8000
+```
+
+Then open http://127.0.0.1:8000.
+
+Drag any player to where they should have been. Keys: <kbd>A</kbd> looks right,
+<kbd>S</kbd> save corrections, <kbd>D</kbd> skip, <kbd>R</kbd> reset,
+<kbd>M</kbd> show the model's guess, arrows to navigate.
+
+Frames come from the validation match, ordered by the dataset's phase weighting so
+transitions surface first. Labels append to `data/labels/corrections.jsonl`.
+
+**The model's suggestion is hidden until you press M, deliberately.** Seeing a weak
+proposal before forming a view anchors you to it, and anchored labels would bake the
+model's current errors into the only ground truth this project will ever have.
+
+Set `FOOTRACK_LABELER` before starting so multi-rater agreement can be measured later.
 
 **Run long scripts unbuffered** (`python -u`) if you want to watch progress — Python
 block-buffers stdout when it is not attached to a terminal, so a training run redirected

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Footrack Labelling</title>
+<style>
+  :root {
+    --grass: #1b3a1b;
+    --grass-dark: #142c14;
+    --line: #c8d6c8;
+    --team-a: #4ea3ff;
+    --team-b: #ff5a5a;
+    --accent: #ffd166;
+    --text: #e8efe8;
+    --muted: #93a693;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--grass-dark); color: var(--text);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header, footer { padding: 12px 20px; background: #0f1f0f; }
+  header { display: flex; gap: 24px; align-items: baseline; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .02em; }
+  .meta { color: var(--muted); font-size: 13px; display: flex; gap: 18px; flex-wrap: wrap; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .pill {
+    padding: 2px 9px; border-radius: 999px; font-size: 12px;
+    background: #23402380; border: 1px solid #3c5c3c;
+  }
+  main { flex: 1; display: grid; place-items: center; padding: 16px; }
+  svg { width: min(100%, 1100px); height: auto; touch-action: none; }
+  .player { cursor: grab; }
+  .player:active { cursor: grabbing; }
+  .player circle { transition: r .12s ease; }
+  .player:hover circle.body { r: 15; }
+  .jersey { font-size: 11px; font-weight: 700; fill: #fff; pointer-events: none; user-select: none; }
+  footer { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 8px;
+    border: 1px solid #3c5c3c; background: #1e3a1e; color: var(--text); cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #2a4f2a; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: #1b1b0f; border-color: var(--accent); }
+  button.primary:hover:not(:disabled) { background: #ffdd8a; }
+  .spacer { flex: 1; }
+  kbd {
+    font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px;
+    background: #0a160a; border: 1px solid #3c5c3c; color: var(--muted);
+  }
+  .hint { color: var(--muted); font-size: 12px; }
+  .toast {
+    position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%);
+    background: #23402c; border: 1px solid #3c5c3c; padding: 9px 18px;
+    border-radius: 8px; opacity: 0; transition: opacity .25s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .warn { color: var(--accent); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Footrack — positional labelling</h1>
+  <div class="meta">
+    <span>frame <b id="pos">–</b> / <span id="total">–</span></span>
+    <span class="pill" id="phase">–</span>
+    <span>moved <b id="moved">0</b></span>
+    <span>judged <b id="judged">0</b></span>
+    <span>agreement <b id="rate">–</b></span>
+    <span id="dupe" class="warn"></span>
+  </div>
+</header>
+
+<main>
+  <svg id="pitch" viewBox="0 0 1050 680" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="1050" height="680" fill="var(--grass)"/>
+    <g fill="none" stroke="var(--line)" stroke-width="2" opacity=".85">
+      <rect x="0" y="0" width="1050" height="680"/>
+      <line x1="525" y1="0" x2="525" y2="680"/>
+      <circle cx="525" cy="340" r="91.5"/>
+      <circle cx="525" cy="340" r="3" fill="var(--line)"/>
+      <rect x="0" y="138.4" width="165" height="403.2"/>
+      <rect x="0" y="248.4" width="55" height="183.2"/>
+      <circle cx="110" cy="340" r="3" fill="var(--line)"/>
+      <rect x="885" y="138.4" width="165" height="403.2"/>
+      <rect x="995" y="248.4" width="55" height="183.2"/>
+      <circle cx="940" cy="340" r="3" fill="var(--line)"/>
+    </g>
+    <text x="525" y="28" text-anchor="middle" fill="var(--muted)" font-size="13">
+      team A attacks this way →
+    </text>
+    <g id="ghosts"></g>
+    <g id="suggestion"></g>
+    <g id="players"></g>
+  </svg>
+</main>
+
+<footer>
+  <button class="primary" id="btn-agree">Looks right <kbd>A</kbd></button>
+  <button id="btn-save" disabled>Save corrections <kbd>S</kbd></button>
+  <button id="btn-reset" disabled>Reset <kbd>R</kbd></button>
+  <button id="btn-skip">Skip <kbd>D</kbd></button>
+  <span class="spacer"></span>
+  <button id="btn-model">Show model <kbd>M</kbd></button>
+  <button id="btn-prev">←</button>
+  <button id="btn-next">→</button>
+  <span class="hint">drag any player to where they should have been</span>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const M2PX = 10, HALF_L = 52.5, HALF_W = 34;
+const toSvg = (x, y) => [(x + HALF_L) * M2PX, (HALF_W - y) * M2PX];
+const toMetres = (px, py) => [px / M2PX - HALF_L, HALF_W - py / M2PX];
+
+let position = 0, frame = null, moved = new Map(), dragging = null, showingModel = false;
+
+const $ = id => document.getElementById(id);
+const svg = $("pitch");
+
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+async function loadFrame(p) {
+  const res = await fetch(`/api/frame/${p}`);
+  if (!res.ok) return toast("no such frame");
+  frame = await res.json();
+  position = frame.position;
+  moved.clear();
+  showingModel = false;
+  $("suggestion").innerHTML = "";
+  render();
+  refreshStats();
+}
+
+function render() {
+  $("pos").textContent = position + 1;
+  $("total").textContent = frame.total;
+  $("phase").textContent = frame.phase.replace(/_/g, " ").toLowerCase();
+  $("dupe").textContent = frame.already_labelled
+    ? `already labelled: ${frame.already_labelled}` : "";
+  $("moved").textContent = moved.size;
+  $("btn-save").disabled = moved.size === 0;
+  $("btn-reset").disabled = moved.size === 0;
+
+  const players = $("players"), ghosts = $("ghosts");
+  players.innerHTML = ""; ghosts.innerHTML = "";
+
+  for (const pl of frame.players) {
+    if (!pl.present) continue;
+    const m = moved.get(pl.slot);
+    const [x, y] = toSvg(m ? m.to[0] : pl.x, m ? m.to[1] : pl.y);
+
+    if (m) {
+      const [ox, oy] = toSvg(pl.x, pl.y);
+      ghosts.insertAdjacentHTML("beforeend", `
+        <circle cx="${ox}" cy="${oy}" r="13" fill="none"
+                stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="3 3"/>
+        <line x1="${ox}" y1="${oy}" x2="${x}" y2="${y}"
+              stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>`);
+    }
+
+    if (pl.team === "ball") {
+      players.insertAdjacentHTML("beforeend", `
+        <g class="player" data-slot="0">
+          <circle class="body" cx="${x}" cy="${y}" r="7" fill="#fff" stroke="#000" stroke-width="1.5"/>
+        </g>`);
+      continue;
+    }
+
+    const colour = pl.team === "a" ? "var(--team-a)" : "var(--team-b)";
+    const [vx, vy] = [pl.vx * 4, -pl.vy * 4];
+    players.insertAdjacentHTML("beforeend", `
+      <g class="player" data-slot="${pl.slot}">
+        <line x1="${x}" y1="${y}" x2="${x + vx}" y2="${y + vy}"
+              stroke="#fff" stroke-width="2" opacity=".5"/>
+        <circle class="body" cx="${x}" cy="${y}" r="13" fill="${colour}"
+                stroke="${m ? 'var(--accent)' : '#fff'}" stroke-width="${m ? 3 : 1.6}"/>
+        <text class="jersey" x="${x}" y="${y + 4}" text-anchor="middle">${pl.jersey ?? ""}</text>
+      </g>`);
+  }
+}
+
+// -- dragging ---------------------------------------------------------------
+
+function svgPoint(evt) {
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  return [p.x, p.y];
+}
+
+svg.addEventListener("pointerdown", evt => {
+  const g = evt.target.closest(".player");
+  if (!g) return;
+  const slot = Number(g.dataset.slot);
+  if (slot === 0) return;               // the ball is an observation, not a choice
+  dragging = slot;
+  svg.setPointerCapture(evt.pointerId);
+});
+
+svg.addEventListener("pointermove", evt => {
+  if (dragging === null) return;
+  const [px, py] = svgPoint(evt);
+  const [mx, my] = toMetres(
+    Math.max(0, Math.min(1050, px)),
+    Math.max(0, Math.min(680, py))
+  );
+  const pl = frame.players.find(p => p.slot === dragging);
+  moved.set(dragging, { from: [pl.x, pl.y], to: [mx, my] });
+  render();
+});
+
+svg.addEventListener("pointerup", evt => {
+  if (dragging === null) return;
+  const pl = frame.players.find(p => p.slot === dragging);
+  const m = moved.get(dragging);
+  // A nudge under half a metre is almost certainly a slip, not a judgement.
+  if (m && Math.hypot(m.to[0] - pl.x, m.to[1] - pl.y) < 0.5) moved.delete(dragging);
+  dragging = null;
+  render();
+});
+
+// -- actions ----------------------------------------------------------------
+
+async function submit(verdict) {
+  const body = {
+    position,
+    verdict,
+    corrections: [...moved.entries()].map(([slot, m]) => ({
+      slot, from_xy: m.from, to_xy: m.to,
+    })),
+    note: "",
+  };
+  const res = await fetch("/api/label", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const out = await res.json();
+  applyStats(out.stats);
+  toast(verdict === "skip" ? "skipped" : `saved → ${out.split} split`);
+  loadFrame(position + 1);
+}
+
+async function refreshStats() {
+  applyStats(await (await fetch("/api/stats")).json());
+}
+
+function applyStats(s) {
+  $("judged").textContent = s.frames_judged;
+  $("rate").textContent = s.agreement_rate === null
+    ? "–" : `${(s.agreement_rate * 100).toFixed(0)}%`;
+}
+
+async function toggleModel() {
+  if (showingModel) {
+    $("suggestion").innerHTML = "";
+    showingModel = false;
+    return;
+  }
+  const res = await fetch(`/api/suggestion/${position}`);
+  if (!res.ok) return toast("no checkpoint loaded");
+  const data = await res.json();
+  $("suggestion").innerHTML = data.players.filter(p => p.slot !== 0).map(p => {
+    const [x, y] = toSvg(p.x, p.y);
+    return `<circle cx="${x}" cy="${y}" r="13" fill="none"
+             stroke="var(--accent)" stroke-width="2" opacity=".8"/>`;
+  }).join("");
+  showingModel = true;
+  toast(data.caveat);
+}
+
+$("btn-agree").onclick = () => submit("agree");
+$("btn-save").onclick = () => submit("correct");
+$("btn-skip").onclick = () => submit("skip");
+$("btn-reset").onclick = () => { moved.clear(); render(); };
+$("btn-model").onclick = toggleModel;
+$("btn-prev").onclick = () => loadFrame(Math.max(0, position - 1));
+$("btn-next").onclick = () => loadFrame(position + 1);
+
+addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "a") $("btn-agree").click();
+  else if (k === "s") { if (!$("btn-save").disabled) $("btn-save").click(); }
+  else if (k === "d") $("btn-skip").click();
+  else if (k === "r") { if (!$("btn-reset").disabled) $("btn-reset").click(); }
+  else if (k === "m") toggleModel();
+  else if (e.key === "ArrowLeft") $("btn-prev").click();
+  else if (e.key === "ArrowRight") $("btn-next").click();
+});
+
+loadFrame(0);
+</script>
+</body>
+</html>

@@ -11,6 +11,9 @@ data/processed/
 *.jsonl.bz2
 *.parquet
 
+# Labels are NOT ignored. data/labels/ is the one irreplaceable asset here —
+# public datasets can be re-downloaded, coach judgement cannot. Keep it versioned.
+
 # Model artifacts
 checkpoints/
 runs/
