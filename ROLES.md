@@ -1,8 +1,11 @@
 # Footrack — Role Taxonomy
 
-**Status: DRAFT for coaching review.** The structure is considered; the numbers are a
-starting point to be corrected. Every weight and constraint here is meant to be argued
-with.
+**Status: CONFIRMED 2026-09-23** by coaching review. The 8 base roles, their modifiers,
+objective weights and constraints are accepted as the working taxonomy.
+
+Still expected to change with use — the objective weights in §4.1 encode a coaching
+philosophy and are the most likely to move once real shape is visible on a pitch. Treat
+revisions as ordinary, not as a failure of the original.
 
 Feeds four layers: L1 reference positions, L2 constraints, L3 objective weights,
 L4 role embeddings.
