@@ -178,6 +178,19 @@ scale; CVAE or diffusion heads are not worth it below ~1000 matches.
 > uncertainty estimate, which removes the predicted-futures feature and the honest-
 > uncertainty story. Revisit on the full corpus.
 >
+> **3. `epsilon` keeps modes alive but makes them converge.** With the first two
+> fixed, all six modes trained — and drifted toward the same prediction. Mean inter-mode
+> spread fell to **0.77m at t+2s**, against 5-10m of actual player movement, so the modes
+> were saying the same thing in six different ways. The loser share pulls every mode
+> toward the winner's target on every sample, so given enough steps they collapse
+> together. `epsilon` likely needs annealing to zero once modes have separated, rather
+> than being held constant. Unresolved — it belongs with the K and horizon decisions,
+> and wants the full corpus.
+>
+> **Read inter-mode spread and winner perplexity together.** They fail in opposite
+> directions: 28m spread with one winner means dead modes; 0.77m spread with spread-out
+> winners means converged ones. Either number alone is ambiguous.
+>
 > **Two general lessons:**
 >
 > 1. Mode diversity and mode *selection* are separate problems. A collapsed winner
