@@ -323,6 +323,14 @@ def variety_loss(
     a = float(ball_selection_weight)
     selection = a * pooled(slice(0, 1)) + (1.0 - a) * pooled(slice(1, None))
 
+    # The ball is untracked in ~40% of frames (Metrica: 60% present, players
+    # 100%). Without this, those samples score 0 for every mode — the ball term
+    # divides by a clamped zero — and argmin silently returns mode 0, piling a
+    # large share of windows onto one mode and faking a diversity result. Fall
+    # back to the pooled metric whenever the ball has no valid target.
+    has_ball = mask[:, :, 0].any(dim=1, keepdim=True)
+    selection = torch.where(has_ball, selection, per_mode)
+
     best = selection.argmin(dim=1)
     k = per_mode.shape[1]
 

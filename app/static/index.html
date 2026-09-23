@@ -272,9 +272,13 @@ async function toggleModel() {
   const res = await fetch(`/api/suggestion/${position}`);
   if (!res.ok) return toast("no checkpoint loaded");
   const data = await res.json();
-  $("suggestion").innerHTML = data.players.filter(p => p.slot !== 0).map(p => {
+  $("suggestion").innerHTML = data.players.map(p => {
     const [x, y] = toSvg(p.x, p.y);
-    return `<circle cx="${x}" cy="${y}" r="13" fill="none"
+    const actual = frame.players.find(q => q.slot === p.slot);
+    const [ax, ay] = toSvg(actual.x, actual.y);
+    return `<line x1="${ax}" y1="${ay}" x2="${x}" y2="${y}"
+             stroke="var(--accent)" stroke-width="1.2" opacity=".45"/>
+            <circle cx="${x}" cy="${y}" r="13" fill="none"
              stroke="var(--accent)" stroke-width="2" opacity=".8"/>`;
   }).join("");
   showingModel = true;

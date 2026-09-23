@@ -239,6 +239,25 @@ class TestBallWeightedSelection:
         _, _, ball = variety_loss(deltas, logits, target, mask, ball_selection_weight=1.0)
         assert not torch.equal(pooled, ball)
 
+    def test_falls_back_to_pooled_when_ball_is_absent(self):
+        """The ball is untracked in ~40% of frames. Without a fallback the ball
+        term divides by a clamped zero, every mode scores 0, and argmin returns
+        mode 0 — piling windows onto one mode and faking a diversity result."""
+        deltas, logits, target, mask = self.setup_batch()
+        mask[:, :, 0] = False  # no ball anywhere in the horizon
+        deltas[:, 2, :, 1:] = target[:, :, 1:]  # mode 2 nails the players
+        _, _, best = variety_loss(deltas, logits, target, mask, ball_selection_weight=1.0)
+        assert torch.all(best == 2), "should select on players when the ball is missing"
+
+    def test_ball_present_in_some_samples_only(self):
+        deltas, logits, target, mask = self.setup_batch()
+        mask[0, :, 0] = False  # ball missing for sample 0 only
+        deltas[0, 2, :, 1:] = target[0, :, 1:]
+        deltas[1:, 3, :, 0] = target[1:, :, 0]
+        _, _, best = variety_loss(deltas, logits, target, mask, ball_selection_weight=1.0)
+        assert best[0].item() == 2
+        assert torch.all(best[1:] == 3)
+
     def test_loss_still_covers_every_entity(self):
         """Only selection is reweighted; the trajectory loss trains on all 23."""
         deltas, logits, target, mask = self.setup_batch()

@@ -28,8 +28,8 @@ from pydantic import BaseModel
 from footrack import WindowDataset, cached_metrica, estimate_profiles, split_by_match
 from footrack.features import POS_SCALE
 from footrack.labeling import Correction, Label, LabelStore
-from footrack.model import Footrack, ModelConfig, apply_agent_masking
-from footrack.state import Phase
+from footrack.model import OBSERVATION_SLICE, PRESENT_COL, Footrack, ModelConfig
+from footrack.state import BALL, Phase
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = Path(__file__).resolve().parent / "static"
@@ -50,11 +50,24 @@ def _load() -> None:
         augment=False, profiles=estimate_profiles(train_seqs), seed=0,
     )
 
-    # Order frames by the phase weighting so transitions surface early.
+    # Only serve frames where the ball is tracked. It is absent in ~40% of
+    # Metrica frames, and a position cannot be judged without knowing where the
+    # ball is — the whole shape is organised around it.
     weights = dataset.sampling_weights()
+    has_ball = np.array([
+        bool(dataset.sequences[si].mask[start + HISTORY - 1, BALL])
+        for si, start in dataset.index
+    ])
+    weights = np.where(has_ball, weights, 0.0)
+    if weights.sum() == 0:
+        raise RuntimeError("no frames with a tracked ball")
+    weights = weights / weights.sum()
+
+    # Order by the phase weighting so transitions surface before dead ball.
     rng = np.random.default_rng(0)
-    order = rng.choice(len(dataset), size=len(dataset), replace=False,
-                       p=weights / weights.sum())
+    candidates = np.flatnonzero(weights > 0)
+    order = rng.choice(candidates, size=len(candidates), replace=False,
+                       p=weights[candidates] / weights[candidates].sum())
 
     _state["dataset"] = dataset
     _state["order"] = order
@@ -129,7 +142,13 @@ def get_frame(position: int) -> dict:
 
 @app.get("/api/suggestion/{position}")
 def get_suggestion(position: int) -> dict:
-    """The model's own placement for each player, for comparison after judging."""
+    """Where the model would place each player, given every other player.
+
+    One player is hidden at a time, batched into a single forward pass. Hiding
+    everyone at once — as an earlier version did — leaves the model nothing to
+    condition on, so it returns the mean position of everything and the overlay
+    collapses into a meaningless cluster at the centre circle.
+    """
     model = _state["model"]
     if model is None:
         raise HTTPException(404, "no checkpoint available")
@@ -138,25 +157,42 @@ def get_suggestion(position: int) -> dict:
     index = int(_state["order"][position])
     sample = dataset[index]
 
-    entity = torch.from_numpy(sample.inputs.entity)[None]
-    gen = torch.Generator().manual_seed(0)
+    slots = [s for s in range(1, 23) if bool(sample.anchor_valid[s])]
+    if not slots:
+        return {"position": position, "players": [], "caveat": "no players present"}
+
+    base = torch.from_numpy(sample.inputs.entity)
+    batch = base.unsqueeze(0).repeat(len(slots), 1, 1, 1)
+    for i, slot in enumerate(slots):
+        batch[i, :, slot, OBSERVATION_SLICE] = 0.0
+        batch[i, :, slot, PRESENT_COL] = 0.0
+
+    def stack(arr):
+        return torch.from_numpy(arr).unsqueeze(0).repeat(
+            len(slots), *([1] * arr.ndim)
+        )
+
     with torch.no_grad():
-        # Hide everyone in turn is too slow; hide a quarter and report those.
-        masked, hidden = apply_agent_masking(entity, p=1.0, generator=gen)
-        out = model(masked,
-                    torch.from_numpy(sample.inputs.context)[None],
-                    torch.from_numpy(sample.inputs.role_ids)[None],
-                    torch.from_numpy(sample.inputs.player_ids)[None])
-        recon = out["recon"][0, -1].numpy() * POS_SCALE
+        out = model(batch, stack(sample.inputs.context),
+                    stack(sample.inputs.role_ids), stack(sample.inputs.player_ids))
+        recon = out["recon"][:, -1].numpy() * POS_SCALE
+
+    truth = sample.inputs.entity[-1, :, 0:2] * POS_SCALE
+    players, errors = [], []
+    for i, slot in enumerate(slots):
+        err = float(np.linalg.norm(recon[i, slot] - truth[slot]))
+        errors.append(err)
+        players.append({
+            "slot": slot,
+            "x": float(recon[i, slot, 0]),
+            "y": float(recon[i, slot, 1]),
+            "error_m": round(err, 1),
+        })
 
     return {
         "position": position,
-        "players": [
-            {"slot": s, "x": float(recon[s, 0]), "y": float(recon[s, 1])}
-            for s in range(23)
-            if bool(sample.anchor_valid[s])
-        ],
-        "caveat": "reconstruction head, ~15m mean error — weaker than it looks",
+        "players": players,
+        "caveat": f"each player hidden in turn — mean error {np.mean(errors):.1f}m here",
     }
 
 
