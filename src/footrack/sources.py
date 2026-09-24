@@ -322,6 +322,43 @@ class KloppySource(TrackingSource):
         )
 
 
+# DFL/IDSSE: seven Bundesliga and 2. Bundesliga matches, CC BY 4.0. Full optical
+# tracking, so every player is present on every frame.
+SPORTEC_MATCHES: tuple[str, ...] = (
+    "J03WMX", "J03WN1", "J03WPY", "J03WOH", "J03WQQ", "J03WOY", "J03WR9",
+)
+
+# SkillCorner open data, MIT licensed. Broadcast-derived, so players off camera
+# are simply absent — which is the masked-agent signal, not a defect.
+SKILLCORNER_MATCHES: tuple[str, ...] = (
+    "1874553", "1886347", "1899585", "1925299", "1927964", "1953632", "1959846",
+    "1986691", "1996435", "1996436", "2006229", "2006363", "2007448", "2007721",
+    "2010085", "2011166", "2013725", "2015213", "2016236", "2017461",
+)
+
+
+def load_skillcorner(match_id: str, limit: int | None = None) -> list[Sequence]:
+    """SkillCorner open data — broadcast tracking, fetched from their GitHub."""
+    from kloppy import skillcorner
+
+    kwargs: dict = {"match_id": match_id, "include_empty_frames": False}
+    if limit is not None:
+        kwargs["limit"] = limit
+    dataset = skillcorner.load_open_data(**kwargs)
+    return KloppySource(dataset, match_id=f"skillcorner_{match_id}").load()
+
+
+def load_sportec(match_id: str, limit: int | None = None) -> list[Sequence]:
+    """DFL/IDSSE open data — full optical tracking, with event data attached."""
+    from kloppy import sportec
+
+    kwargs: dict = {"match_id": match_id}
+    if limit is not None:
+        kwargs["limit"] = limit
+    dataset = sportec.load_open_tracking_data(**kwargs)
+    return KloppySource(dataset, match_id=f"sportec_{match_id}").load()
+
+
 def load_metrica(
     match_id: int = 1, limit: int | None = None, with_events: bool = True
 ) -> list[Sequence]:

@@ -25,37 +25,58 @@ And even then you assemble off-the-shelf components — you do not write a CNN. 
 
 ### Full optical tracking — all 22 players, always present
 
-| Dataset | Matches | Detail | License |
+| Dataset | Matches | kloppy loader | License |
 |---|---|---|---|
-| **DFL / IDSSE-data** | 7 | TRACAB tracking @25Hz + synced DFL event data. German Sport University Cologne. | CC BY 4.0 |
-| **Metrica Sports sample data** | 3 | Anonymised, synchronised tracking + events. CSV / EPTS / JSON. | Open |
+| **DFL / IDSSE-data** | 7 | `sportec.load_open_tracking_data(match_id)` | CC BY 4.0 |
+| **Metrica Sports sample data** | 3 | `metrica.load_open_data(match_id)` | Open |
 
-**~10 matches.** Small, but complete states. **Reserve these as the clean validation
-and test set** — honest evaluation needs frames where you know where everyone actually
-was.
+**10 matches, all ungated and downloadable now.** Complete states, so **reserve these
+for validation** — honest evaluation needs frames where you know where everyone
+actually was.
 
-### Broadcast-derived tracking — only players in camera frame
+DFL match ids: `J03WMX` (Köln–Bayern), `J03WN1` (Bochum–Leverkusen), and five Fortuna
+Düsseldorf home games (`J03WPY`, `J03WOH`, `J03WQQ`, `J03WOY`, `J03WR9`). The first two
+share no team with the rest, which is why they are the default validation split — holding
+out a Düsseldorf match would leave that team on both sides.
 
-| Dataset | Matches | Detail | Access |
+Metrica game 3 has no event feed at the URL games 1 and 2 use, so its phase is UNKNOWN
+throughout. Harmless: those windows are downweighted in sampling anyway.
+
+### Broadcast-derived tracking
+
+| Dataset | Matches | kloppy loader | Access |
 |---|---|---|---|
-| **PFF FC / Gradient Sports — 2022 Men's World Cup** | **64** | Broadcast tracking + event data + play-by-play grades, all 64 games. Loadable via kloppy. | Free on access request (form) |
-| **SkillCorner open data** | 10 | A-League 2024/25. Broadcast tracking + physical data, **plus off-ball runs and phases of play labels**. | MIT |
+| **SkillCorner open data** | **20** | `skillcorner.load_open_data(match_id)` | MIT |
+| **PFF FC / Gradient Sports — 2022 World Cup** | 64 | `pff` | Gated — form is broken, email `info@gradientsports.com` |
 
-**~74 matches.** This is the bulk of the corpus and the PFF set is the single biggest
-free tracking release available.
+**SkillCorner's open set is 20 matches, not the 10 earlier reported** — it has grown.
+Ungated, MIT licensed, fetched straight from their GitHub by kloppy.
 
-### The gap problem is not a problem
+**Measured, and contrary to the assumption below:** both SkillCorner and DFL track the
+ball on **100%** of frames. The 40% ball-absence problem is specific to Metrica, not a
+property of football tracking data. Don't generalise from one source.
 
-Broadcast tracking only sees players in frame — typically 70-85% coverage, with players
-appearing and disappearing.
+### Totals
 
-**This is exactly what masked agent modeling (MODEL.md task 2) consumes.** The missing
-players *are* the mask. Naturally occurring, correctly distributed training signal for
-a task you wanted anyway — and the resulting inpainting ability is precisely what you
-need in production when a GPS vest drops out mid-session.
+| | Matches |
+|---|---|
+| Ungated, available today | **30** |
+| PFF, if it arrives | +64 |
 
-The weakness of broadcast data is the strength of the pretraining task. Do not filter
-these frames out.
+### On coverage gaps
+
+The expectation was that broadcast tracking would show 70-85% coverage, with players
+appearing and disappearing as the camera moves — and that those gaps would be free
+training signal for masked agent modelling (MODEL.md task 2), since the missing players
+*are* the mask.
+
+**Measured, this did not hold for SkillCorner's open set: coverage is 100%.** Their
+release appears to carry all players rather than only those on camera. So the masked
+agent task needs its masking applied synthetically, as the training loop already does,
+rather than harvested from the data.
+
+Where real gaps do occur, do not filter those frames out — the inpainting ability they
+teach is exactly what production needs when a GPS vest drops out mid-session.
 
 ### Two useful bonuses
 

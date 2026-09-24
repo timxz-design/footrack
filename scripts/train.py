@@ -17,16 +17,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from footrack import (
-    WindowDataset,
-    build_player_index,
-    cached_metrica,
-    estimate_profiles,
-    infer_roles,
-    split_by_match,
-    summarise,
-)
-from footrack.dataset import constant_velocity_batch
+from footrack.dataset import WindowDataset, constant_velocity_batch, standard_datasets
 from footrack.features import POS_SCALE
 from footrack.model import (
     Footrack,
@@ -132,30 +123,20 @@ def main() -> None:
     ap.add_argument("--recon-weight", type=float, default=1.0)
     ap.add_argument("--d-model", type=int, default=128)
     ap.add_argument("--depth", type=int, default=4)
+    ap.add_argument("--stride", type=int, default=25,
+                    help="frames between training windows; larger = more diverse, fewer")
     ap.add_argument("--weighted-sampling", action="store_true")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
     torch.manual_seed(0)
-    sequences = []
-    for m in (1, 2):
-        sequences.extend(cached_metrica(m, root=CACHE))
-
-    train_seqs, val_seqs = split_by_match(sequences, val_matches=["metrica_2"])
-    profiles = estimate_profiles(train_seqs)
-
-    # Roles are inferred per match from average position: public data carries no
-    # role labels, and without them every player looks identical to the model
-    # apart from their team and physical profile.
-    roles = infer_roles(sequences)
-    player_index = build_player_index(sequences)
-    print(f"roles inferred for {len(roles)} players: {summarise(sequences, roles)}")
-
-    shared = dict(history=25, horizon=20, target_rate=TARGET_RATE, profiles=profiles,
-                  roles=roles, player_index=player_index, seed=0)
-    train = WindowDataset(train_seqs, stride=5, augment=True, **shared)
-    val = WindowDataset(val_seqs, stride=25, augment=False, **shared)
-    print(f"train {len(train)} windows / val {len(val)} windows")
+    train, val, shared = standard_datasets(
+        CACHE, train_stride=args.stride, target_rate=TARGET_RATE
+    )
+    matches = {s.match_id for s in train.sequences} | {s.match_id for s in val.sequences}
+    print(f"{len(matches)} matches | train {len(train)} windows / val {len(val)} windows")
+    print(f"roles for {len(shared['roles'])} players, "
+          f"{len(shared['player_index'])} in the tendency table")
 
     cfg = ModelConfig(d_model=args.d_model, depth=args.depth, horizon=20)
     model = Footrack(cfg).to(args.device)

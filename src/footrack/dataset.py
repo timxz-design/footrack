@@ -243,15 +243,24 @@ def collate(samples: list[TrainingSample]) -> dict[str, np.ndarray]:
     }
 
 
+# Held out for evaluation: the two DFL fixtures that share no team with any
+# training match. Full optical tracking, so every player and the ball are
+# present on every frame — honest evaluation needs states where you know where
+# everyone actually was, not broadcast data with coverage gaps (DATA.md §2).
+# The other five DFL matches are all Fortuna Düsseldorf home games, so holding
+# those out instead would leave that team on both sides of the split.
+DEFAULT_VAL_MATCHES: tuple[str, ...] = ("sportec_J03WMX", "sportec_J03WN1")
+
+
 def standard_datasets(
     cache_root,
-    matches: tuple[int, ...] = (1, 2),
-    val_matches: TypingSequence[str] = ("metrica_2",),
+    val_matches: TypingSequence[str] = DEFAULT_VAL_MATCHES,
     history: int = 25,
     horizon: int = 20,
     target_rate: float = 10.0,
-    train_stride: int = 5,
-    val_stride: int = 25,
+    train_stride: int = 25,
+    val_stride: int = 50,
+    only: TypingSequence[str] | None = None,
 ) -> tuple["WindowDataset", "WindowDataset", dict]:
     """Build the canonical train/val datasets used by every script.
 
@@ -261,17 +270,29 @@ def standard_datasets(
     player identity stayed unset through several training runs.
 
     Profiles are estimated from **training matches only**; estimating them over
-    the validation match would leak player capability into evaluation. Roles and
-    the player index are built over all matches, since they are identity
+    the validation matches would leak player capability into evaluation. Roles
+    and the player index are built over everything, since they are identity
     lookups rather than learned statistics.
+
+    ``train_stride`` defaults to 25 — a full window apart — because with thirty
+    matches available, sample *diversity* beats sample density. A small stride
+    mostly yields near-duplicate windows from the same passage of play.
     """
-    from footrack.cache import cached_metrica
+    from footrack.cache import cached_all
     from footrack.features import estimate_profiles
     from footrack.roles import build_player_index, infer_roles
 
-    sequences = []
-    for m in matches:
-        sequences.extend(cached_metrica(m, root=cache_root))
+    sequences = cached_all(root=cache_root)
+    if only is not None:
+        keep = set(only)
+        sequences = [s for s in sequences if s.match_id in keep]
+
+    available = {s.match_id for s in sequences}
+    val_matches = [m for m in val_matches if m in available]
+    if not val_matches:
+        raise ValueError(
+            f"none of the requested validation matches are cached; have {sorted(available)}"
+        )
 
     train_seqs, val_seqs = split_by_match(sequences, val_matches=list(val_matches))
 

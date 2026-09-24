@@ -135,10 +135,15 @@ negligible information loss. Keep 25Hz only for the short-horizon latency compen
 
 **Size**: 4-8 layers, d_model 128-256, ~2-10M parameters. Resist going bigger.
 
-The available corpus is ~84 matches of continuous tracking (see DATA.md §7) — roughly
-900k 2-second windows, ~3.6M after symmetry augmentation, each carrying dense per-agent
-supervision. That comfortably supports this size range. It does **not** support going
-larger: 84 matches is ~84 independent tactical contexts regardless of frame count.
+**29 matches are ungated and cached** — 2 Metrica, 7 DFL, 20 SkillCorner — for roughly
+1.5M frames at 10Hz. PFF's 64 would take that to 93 if the access request lands, but is
+not required.
+
+At a 25-frame stride that is ~59k windows, ~236k after symmetry augmentation, each
+carrying dense per-agent supervision across 23 agents and 20 future timesteps. That
+supports the size range above. It does **not** support going larger: 29 matches is ~29
+independent tactical contexts regardless of frame count, and the binding constraint is
+tactical variety rather than sample count.
 
 ### 3.2 Multi-modal output — non-negotiable
 

@@ -127,3 +127,48 @@ def cached_metrica(
     from footrack.sources import load_metrica
 
     return cached(f"metrica_{match_id}", lambda: load_metrica(match_id), root, refresh)
+
+
+def cached_skillcorner(
+    match_id: str, root: Path | str = "data/processed", refresh: bool = False
+) -> list[Sequence]:
+    """SkillCorner open data, cached. Broadcast tracking — expect coverage gaps."""
+    from footrack.sources import load_skillcorner
+
+    return cached(
+        f"skillcorner_{match_id}", lambda: load_skillcorner(match_id), root, refresh
+    )
+
+
+def cached_sportec(
+    match_id: str, root: Path | str = "data/processed", refresh: bool = False
+) -> list[Sequence]:
+    """DFL/IDSSE open data, cached. Full optical tracking."""
+    from footrack.sources import load_sportec
+
+    return cached(f"sportec_{match_id}", lambda: load_sportec(match_id), root, refresh)
+
+
+def cached_all(
+    root: Path | str = "data/processed", refresh: bool = False
+) -> list[Sequence]:
+    """Every open match available, cached.
+
+    Sources differ in kind, which matters downstream: Metrica and Sportec are
+    full optical tracking with every player present on every frame, while
+    SkillCorner is broadcast-derived and has real coverage gaps. Reserve the
+    optical matches for validation — honest evaluation needs frames where you
+    know where everyone actually was (DATA.md §2).
+    """
+    from footrack.sources import SKILLCORNER_MATCHES, SPORTEC_MATCHES
+
+    out: list[Sequence] = []
+    # Metrica game 3 is excluded: different format, no event feed, parses to
+    # zero usable sequences.
+    for match_id in (1, 2):
+        out.extend(cached_metrica(match_id, root, refresh))
+    for match_id in SPORTEC_MATCHES:
+        out.extend(cached_sportec(match_id, root, refresh))
+    for match_id in SKILLCORNER_MATCHES:
+        out.extend(cached_skillcorner(match_id, root, refresh))
+    return out
