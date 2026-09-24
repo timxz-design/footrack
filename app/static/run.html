@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Footrack — Run</title>
+<style>
+  /* Pitch-side view. The coach is watching players, not this screen, so
+     everything is glanceable and the whole pitch is one tap target. */
+  :root {
+    --grass: #1b3a1b; --dark: #0a160a; --line: #c8d6c8;
+    --mark: #ffd166; --ball: #fff; --text: #e8efe8; --muted: #93a693;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent;
+      user-select: none; }
+  body {
+    margin: 0; background: var(--dark); color: var(--text); height: 100vh;
+    font: 16px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* Picker */
+  #picker { flex: 1; overflow-y: auto; padding: 18px; }
+  #picker h2 { font-size: 15px; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  .card {
+    background: #16301a; border: 1px solid #3c5c3c; border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 10px; cursor: pointer;
+  }
+  .card:active { background: #1e3a1e; }
+  .card b { font-size: 18px; display: block; }
+  .card span { color: var(--muted); font-size: 13px; }
+
+  /* Runner */
+  #runner { flex: 1; display: none; flex-direction: column; min-height: 0; }
+  #bar {
+    padding: 10px 16px; background: var(--dark); display: flex; gap: 12px;
+    align-items: center; border-bottom: 1px solid #2a4f2a;
+  }
+  #bar b { font-size: 17px; }
+  #bar .step { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #bar .phase {
+    margin-left: auto; font-size: 13px; padding: 3px 10px; border-radius: 999px;
+    background: #23402380; border: 1px solid #3c5c3c; color: var(--muted);
+  }
+  #stage { flex: 1; min-height: 0; position: relative; cursor: pointer; }
+  svg { width: 100%; height: 100%; display: block; }
+  #note {
+    padding: 14px 16px; font-size: 19px; font-weight: 600; min-height: 58px;
+    background: #16301a; border-top: 1px solid #2a4f2a;
+  }
+  #controls { display: flex; border-top: 1px solid #2a4f2a; }
+  #controls button {
+    flex: 1; font: inherit; font-size: 17px; font-weight: 700; padding: 20px 0;
+    border: 0; border-right: 1px solid #2a4f2a; background: #1e3a1e; color: var(--text);
+  }
+  #controls button:last-child { border-right: 0; }
+  #controls button:active { background: #2a4f2a; }
+  #controls .next { background: var(--mark); color: #1b1b0f; flex: 2; }
+  .mark-label { font-size: 11px; font-weight: 700; fill: #1b1b0f; }
+</style>
+</head>
+<body>
+
+<div id="picker">
+  <h2>Sessions</h2>
+  <div id="sessions"></div>
+</div>
+
+<div id="runner">
+  <div id="bar">
+    <b id="drill-name">–</b>
+    <span class="step" id="step-counter">–</span>
+    <span class="phase" id="phase">–</span>
+  </div>
+  <div id="stage">
+    <svg id="pitch" viewBox="0 0 1050 680" preserveAspectRatio="xMidYMid meet"
+         xmlns="http://www.w3.org/2000/svg">
+      <rect width="1050" height="680" fill="var(--grass)"/>
+      <g fill="none" stroke="var(--line)" stroke-width="2" opacity=".8">
+        <rect x="0" y="0" width="1050" height="680"/>
+        <line x1="525" y1="0" x2="525" y2="680"/>
+        <circle cx="525" cy="340" r="91.5"/>
+        <rect x="0" y="138.4" width="165" height="403.2"/>
+        <rect x="885" y="138.4" width="165" height="403.2"/>
+      </g>
+      <g id="marks"></g>
+      <g id="ball"></g>
+    </svg>
+  </div>
+  <div id="note"></div>
+  <div id="controls">
+    <button id="back">◀ Back</button>
+    <button id="exit">Drills</button>
+    <button class="next" id="next">Next ▶</button>
+  </div>
+</div>
+
+<script>
+const M2PX = 10, HALF_L = 52.5, HALF_W = 34;
+const toSvg = (x, y) => [(x + HALF_L) * M2PX, (HALF_W - y) * M2PX];
+const $ = id => document.getElementById(id);
+
+let sessions = [], drill = null, stepIndex = 0;
+
+async function boot() {
+  sessions = (await (await fetch("/api/sessions")).json()).sessions;
+  const parts = [];
+  for (const s of sessions) {
+    const full = await (await fetch(`/api/sessions/${s.slug}`)).json();
+    parts.push(`<h2>${full.name}</h2>` + full.drills.map((d, i) => `
+      <div class="card" data-slug="${s.slug}" data-drill="${i}">
+        <b>${d.name}</b>
+        <span>${d.formation} · ${d.steps.length} steps</span>
+      </div>`).join(""));
+  }
+  $("sessions").innerHTML = parts.join("") || "<p>No sessions yet — build one in the planner.</p>";
+
+  document.querySelectorAll(".card").forEach(c => {
+    c.onclick = async () => {
+      const full = await (await fetch(`/api/sessions/${c.dataset.slug}`)).json();
+      drill = full.drills[Number(c.dataset.drill)];
+      stepIndex = 0;
+      $("picker").style.display = "none";
+      $("runner").style.display = "flex";
+      show();
+    };
+  });
+}
+
+async function show() {
+  const step = drill.steps[stepIndex];
+  $("drill-name").textContent = drill.name;
+  $("step-counter").textContent = `${stepIndex + 1} / ${drill.steps.length}`;
+  $("phase").textContent = step.phase.replace(/_/g, " ").toLowerCase();
+  $("note").textContent = step.note || "";
+
+  const res = await fetch("/api/shape", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      formation: drill.formation,
+      ball_x: step.ball[0], ball_y: step.ball[1],
+      phase: step.phase,
+      line_height: drill.line_height,
+      pinned: Object.fromEntries(
+        Object.entries(step.pinned || {}).map(([k, v]) => [Number(k), v])),
+    }),
+  });
+  const state = await res.json();
+
+  $("marks").innerHTML = state.marks.map(m => {
+    const [x, y] = toSvg(m.x, m.y);
+    return `<g><circle cx="${x}" cy="${y}" r="19" fill="var(--mark)"
+              stroke="#0a160a" stroke-width="2"/>
+            <text class="mark-label" x="${x}" y="${y + 4}"
+                  text-anchor="middle">${m.label}</text></g>`;
+  }).join("");
+
+  const [bx, by] = toSvg(step.ball[0], step.ball[1]);
+  $("ball").innerHTML =
+    `<circle cx="${bx}" cy="${by}" r="11" fill="var(--ball)" stroke="#000" stroke-width="2"/>`;
+}
+
+function go(delta) {
+  if (!drill) return;
+  const next = stepIndex + delta;
+  if (next < 0 || next >= drill.steps.length) return;
+  stepIndex = next;
+  show();
+}
+
+// The whole pitch advances the drill — the largest possible tap target, for a
+// coach who is looking at their players rather than the screen.
+$("stage").onclick = () => go(1);
+$("next").onclick = () => go(1);
+$("back").onclick = () => go(-1);
+$("exit").onclick = () => {
+  drill = null;
+  $("runner").style.display = "none";
+  $("picker").style.display = "block";
+};
+
+addEventListener("keydown", e => {
+  if (e.key === "ArrowRight" || e.key === " ") go(1);
+  else if (e.key === "ArrowLeft") go(-1);
+});
+
+boot();
+</script>
+</body>
+</html>

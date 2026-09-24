@@ -13,6 +13,7 @@ Run:  .venv\\Scripts\\python.exe -m uvicorn app.coach:app --port 8100
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -21,9 +22,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from footrack import constraints, pitch, tactics
+from footrack import constraints, pitch
 from footrack.formations import FORMATIONS, deform
 from footrack.roles import Role
+from footrack.sessions import Session, SessionStore, example_session
 from footrack.state import Phase
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -119,9 +121,58 @@ def shape(req: ShapeRequest) -> dict:
     }
 
 
+# -- sessions -----------------------------------------------------------------
+
+STORE = SessionStore(Path(__file__).resolve().parents[1] / "data" / "sessions")
+if not STORE.list():
+    STORE.save(example_session())
+
+
+@app.get("/api/sessions")
+def list_sessions() -> dict:
+    return {"sessions": STORE.list()}
+
+
+@app.get("/api/sessions/{slug}")
+def get_session(slug: str) -> dict:
+    try:
+        return asdict(STORE.load(slug))
+    except FileNotFoundError:
+        raise HTTPException(404, f"no session {slug}")
+
+
+class SessionIn(BaseModel):
+    name: str
+    created: str = ""
+    drills: list[dict] = []
+
+
+@app.put("/api/sessions")
+def save_session(body: SessionIn) -> dict:
+    try:
+        session = Session(**body.model_dump())
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc))
+    STORE.save(session)
+    return {"ok": True, "slug": session.slug, "sessions": STORE.list()}
+
+
+@app.delete("/api/sessions/{slug}")
+def delete_session(slug: str) -> dict:
+    if not STORE.delete(slug):
+        raise HTTPException(404, f"no session {slug}")
+    return {"ok": True, "sessions": STORE.list()}
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC / "coach.html")
+
+
+@app.get("/run")
+def run() -> FileResponse:
+    """Pitch-side view: pick a drill, tap to advance, nothing else."""
+    return FileResponse(STATIC / "run.html")
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

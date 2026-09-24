@@ -32,7 +32,29 @@ Loads Metrica match 1 through kloppy and writes `outputs/verify_frame.png`.
 | `visualize_predictions.py` | Render forecasts and reconstructions — run after any model change |
 | `diagnose_modes.py` | Mode usage, diversity and effective count |
 
-## Labelling tool
+## Practice tool — the product
+
+```powershell
+.venv\Scripts\python.exe -m uvicorn app.coach:app --port 8100 --reload
+```
+
+| Page | For |
+|---|---|
+| `/` | **Planner** — desk, night before. Drag the ball, switch formation and phase, set line height, pin players. |
+| `/run` | **Pitch-side** — pick a drill, tap anywhere to advance. Nothing else on screen. |
+
+Authoring and operating are separated deliberately (PLAN.md §1.0). On a pitch a
+coach has about three seconds of attention before they abandon the device and
+just shout, so all the thinking goes into the planner and the pitch gets a tap
+target.
+
+Session plans live in `data/sessions/*.json` — plain readable JSON, since a
+coach should be able to copy, mail or hand-edit their own content. An example
+session ships so the tool is never empty on first run.
+
+**No dependency on data, tracking, the model or a GPU.**
+
+## Labelling tool (analysis product — shelved)
 
 ```powershell
 $env:FOOTRACK_LABELER = "your-name"

@@ -1,0 +1,92 @@
+{
+  "name": "Example session",
+  "created": "2026-09-24",
+  "drills": [
+    {
+      "name": "Build-up from the back",
+      "formation": "4-3-3",
+      "line_height": -0.1,
+      "steps": [
+        {
+          "ball": [
+            -45.0,
+            0.0
+          ],
+          "phase": "IN_POSSESSION",
+          "note": "Keeper has it \u2014 split the centre-backs",
+          "pinned": {}
+        },
+        {
+          "ball": [
+            -38.0,
+            -18.0
+          ],
+          "phase": "IN_POSSESSION",
+          "note": "Out to the left-back",
+          "pinned": {}
+        },
+        {
+          "ball": [
+            -20.0,
+            -22.0
+          ],
+          "phase": "IN_POSSESSION",
+          "note": "Full-back progresses, winger holds width",
+          "pinned": {}
+        },
+        {
+          "ball": [
+            0.0,
+            -8.0
+          ],
+          "phase": "IN_POSSESSION",
+          "note": "Inside to the eight",
+          "pinned": {}
+        }
+      ]
+    },
+    {
+      "name": "Mid block, shift and press",
+      "formation": "4-4-2",
+      "line_height": 0.0,
+      "steps": [
+        {
+          "ball": [
+            10.0,
+            0.0
+          ],
+          "phase": "OUT_OF_POSSESSION",
+          "note": "Set the block \u2014 28m, stay compact",
+          "pinned": {}
+        },
+        {
+          "ball": [
+            5.0,
+            24.0
+          ],
+          "phase": "OUT_OF_POSSESSION",
+          "note": "Ball goes wide right \u2014 whole block shifts",
+          "pinned": {}
+        },
+        {
+          "ball": [
+            -5.0,
+            28.0
+          ],
+          "phase": "OUT_OF_POSSESSION",
+          "note": "Press trigger: back-pass to their full-back",
+          "pinned": {}
+        },
+        {
+          "ball": [
+            -15.0,
+            10.0
+          ],
+          "phase": "TRANSITION",
+          "note": "Won it \u2014 first thought forward",
+          "pinned": {}
+        }
+      ]
+    }
+  ]
+}
