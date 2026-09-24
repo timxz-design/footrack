@@ -25,10 +25,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from footrack import tactics
 from footrack.dataset import WindowDataset, standard_datasets
 from footrack.features import POS_SCALE
 from footrack.labeling import Correction, Label, LabelStore
 from footrack.model import OBSERVATION_SLICE, PRESENT_COL, Footrack, ModelConfig
+from footrack.roles import Role, role_id_array
 from footrack.state import BALL, Phase
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +42,7 @@ _state: dict = {}
 
 
 def _load() -> None:
-    _, dataset, _ = standard_datasets(
+    _, dataset, shared = standard_datasets(
         ROOT / "data" / "processed", history=HISTORY, horizon=HORIZON, val_stride=10
     )
 
@@ -65,6 +67,7 @@ def _load() -> None:
 
     _state["dataset"] = dataset
     _state["order"] = order
+    _state["roles"] = shared["roles"]
     _state["store"] = LabelStore(ROOT / "data" / "labels" / "corrections.jsonl")
     _state["labeler"] = os.environ.get("FOOTRACK_LABELER", "unknown")
 
@@ -131,6 +134,52 @@ def get_frame(position: int) -> dict:
         "phase": phase,
         "players": players,
         "already_labelled": existing.verdict if existing else None,
+    }
+
+
+@app.get("/api/proposal/{position}")
+def get_proposal(position: int, formation: str = "4-3-3") -> dict:
+    """The rules-based proposal: where L1+L2 say each player should be.
+
+    Unlike the model's suggestion this is shown by default, because it is what
+    you are being asked to correct. Correcting a proposal is far faster than
+    placing players on a blank pitch, and disagreement is a stronger signal than
+    absolute placement.
+    """
+    dataset: WindowDataset = _state["dataset"]
+    index = int(_state["order"][position])
+    sample = dataset[index]
+    seq = dataset.sequences[dataset.index[index][0]]
+
+    xy = sample.anchor * POS_SCALE
+    ball = xy[BALL] if sample.anchor_valid[BALL] else None
+    rid = role_id_array(seq.slots, _state["roles"])
+    roles = tuple(Role(int(r)) for r in rid[1:12])
+    phase = Phase(int(np.argmax(sample.inputs.context[-1, : len(Phase)])))
+
+    marks = tactics.propose(
+        xy[1:12], roles, ball, phase, formation, opponents=xy[12:23]
+    )
+    return {
+        "position": position,
+        "formation": formation,
+        "phase": phase.name,
+        "threshold_m": tactics.DEVIATION_THRESHOLD_M,
+        "marks": [
+            {
+                "slot": m.slot + 1,  # server slots are 1..11 for team A
+                "label": m.label,
+                "role": m.role.name,
+                "x": float(m.position[0]),
+                "y": float(m.position[1]),
+                "deviation_m": round(m.deviation_m, 1),
+                "significant": m.significant,
+                "source": m.source,
+                "reason": m.reason,
+            }
+            for m in marks
+        ],
+        "summary": tactics.summarise(marks),
     }
 
 

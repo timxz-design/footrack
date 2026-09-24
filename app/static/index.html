@@ -12,6 +12,7 @@
     --team-a: #4ea3ff;
     --team-b: #ff5a5a;
     --accent: #ffd166;
+    --propose: #7bdff2;
     --text: #e8efe8;
     --muted: #93a693;
   }
@@ -68,6 +69,7 @@
   <div class="meta">
     <span>frame <b id="pos">–</b> / <span id="total">–</span></span>
     <span class="pill" id="phase">–</span>
+    <span>flagged <b id="flagged">–</b></span>
     <span>moved <b id="moved">0</b></span>
     <span>judged <b id="judged">0</b></span>
     <span>agreement <b id="rate">–</b></span>
@@ -94,6 +96,7 @@
       team A attacks this way →
     </text>
     <g id="ghosts"></g>
+    <g id="proposal"></g>
     <g id="suggestion"></g>
     <g id="players"></g>
   </svg>
@@ -105,6 +108,7 @@
   <button id="btn-reset" disabled>Reset <kbd>R</kbd></button>
   <button id="btn-skip">Skip <kbd>D</kbd></button>
   <span class="spacer"></span>
+  <button id="btn-proposal">Hide proposal <kbd>P</kbd></button>
   <button id="btn-model">Show model <kbd>M</kbd></button>
   <button id="btn-prev">←</button>
   <button id="btn-next">→</button>
@@ -119,6 +123,7 @@ const toSvg = (x, y) => [(x + HALF_L) * M2PX, (HALF_W - y) * M2PX];
 const toMetres = (px, py) => [px / M2PX - HALF_L, HALF_W - py / M2PX];
 
 let position = 0, frame = null, moved = new Map(), dragging = null, showingModel = false;
+let proposal = null, showProposal = true;
 
 const $ = id => document.getElementById(id);
 const svg = $("pitch");
@@ -140,7 +145,39 @@ async function loadFrame(p) {
   showingModel = false;
   $("suggestion").innerHTML = "";
   render();
+  loadProposal();
   refreshStats();
+}
+
+// The rules-based proposal is shown by default: it is what you are being asked
+// to correct, and correcting is faster and a stronger signal than placing
+// players on a blank pitch.
+async function loadProposal() {
+  proposal = null;
+  $("proposal").innerHTML = "";
+  const res = await fetch(`/api/proposal/${position}`);
+  if (!res.ok) return;
+  proposal = await res.json();
+  drawProposal();
+  $("flagged").textContent = proposal.summary.flagged;
+}
+
+function drawProposal() {
+  if (!proposal || !showProposal) { $("proposal").innerHTML = ""; return; }
+  $("proposal").innerHTML = proposal.marks.filter(m => m.significant).map(m => {
+    const [x, y] = toSvg(m.x, m.y);
+    const actual = frame.players.find(q => q.slot === m.slot);
+    const line = actual
+      ? (([ax, ay]) => `<line x1="${ax}" y1="${ay}" x2="${x}" y2="${y}"
+           stroke="var(--propose)" stroke-width="1.6" stroke-dasharray="5 4" opacity=".7"/>`
+        )(toSvg(actual.x, actual.y))
+      : "";
+    return `${line}
+      <circle cx="${x}" cy="${y}" r="13" fill="none" stroke="var(--propose)"
+              stroke-width="2.5" opacity=".9"/>
+      <text x="${x}" y="${y - 19}" text-anchor="middle" fill="var(--propose)"
+            font-size="9">${m.label} · ${m.deviation_m}m</text>`;
+  }).join("");
 }
 
 function render() {
@@ -290,6 +327,11 @@ $("btn-save").onclick = () => submit("correct");
 $("btn-skip").onclick = () => submit("skip");
 $("btn-reset").onclick = () => { moved.clear(); render(); };
 $("btn-model").onclick = toggleModel;
+$("btn-proposal").onclick = () => {
+  showProposal = !showProposal;
+  $("btn-proposal").firstChild.textContent = showProposal ? "Hide proposal " : "Show proposal ";
+  drawProposal();
+};
 $("btn-prev").onclick = () => loadFrame(Math.max(0, position - 1));
 $("btn-next").onclick = () => loadFrame(position + 1);
 
@@ -301,6 +343,7 @@ addEventListener("keydown", e => {
   else if (k === "d") $("btn-skip").click();
   else if (k === "r") { if (!$("btn-reset").disabled) $("btn-reset").click(); }
   else if (k === "m") toggleModel();
+  else if (k === "p") $("btn-proposal").click();
   else if (e.key === "ArrowLeft") $("btn-prev").click();
   else if (e.key === "ArrowRight") $("btn-next").click();
 });
