@@ -95,8 +95,16 @@ def main() -> None:
     p = counts / counts.sum()
     eff = float(np.exp(-(p[p > 0] * np.log(p[p > 0])).sum()))
     print(f"effective modes (perplexity of ball-only winners): {eff:.2f} of {cfg.n_modes}")
-    print("  well below K suggests the horizon is too short to need that many modes,")
-    print("  not that selection is broken — consider lowering K or extending the horizon")
+    print("  low values were once read as 'the horizon is too short for this many modes'.")
+    print("  That was wrong: on 2 matches this sat at 2.4, and on 29 it reached 4.2 with")
+    print("  no code change. Suspect too little data before suspecting K or the horizon.")
+
+    # Per-entity spread understates ball divergence, because 22 of 23 entities
+    # are players the modes agree about. Report the ball separately.
+    print(f"\nper-mode ball error spans {eb.mean(0).min():.2f}-{eb.mean(0).max():.2f} m, "
+          f"players only {ep.mean(0).min():.2f}-{ep.mean(0).max():.2f} m")
+    print("  a wide ball range with a narrow player range is the intended behaviour:")
+    print("  modes should encode different ball futures and agree about the players")
 
 
 if __name__ == "__main__":

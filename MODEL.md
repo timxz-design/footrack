@@ -205,11 +205,25 @@ scale; CVAE or diffusion heads are not worth it below ~1000 matches.
 >    non-zero. `[1170, 1360, 70, 65, 42, 109]` reads as "6/6 alive" while being ~2.7
 >    effective modes.
 >
-> **Open, and not resolvable on two matches: K=6 is over-provisioned for a 2s horizon.**
-> Effective mode count sits at ~2.4 even with clean selection, because over two seconds
-> the ball mostly continues — the bifurcations that would justify six modes play out over
-> longer windows. Either drop K to 3-4 or extend the horizon. Decide on the full corpus;
-> forcing six modes into balanced use on this much data would be fitting noise.
+> **4. It was a data limitation, not an architecture one — resolved.** On two matches the
+> conclusion drawn here was that K=6 was over-provisioned for a 2s horizon, because
+> "over two seconds the ball mostly continues" and effective mode count stayed near 2.4
+> whatever was tried. **That was wrong.** On 29 matches, with no code change at all,
+> training winner shares reach `[0.20 0.13 0.17 0.28 0.11 0.11]` — perplexity ~5.6 of 6 —
+> and ball-only validation perplexity reaches 4.18.
+>
+> The modes have also specialised exactly as intended. Per-mode ball error now ranges
+> 2.45m to 5.08m while per-mode player error ranges only 0.57m to 0.69m: the modes
+> encode *different ball futures* and agree about the players. The discriminative spread
+> that motivated `ball_selection_weight` has flipped accordingly — the ball now carries
+> 0.968m of spread against the players' 0.035m, a 27x margin, where on two matches it was
+> 0.243m against 0.178m and barely separated.
+>
+> **The lesson worth keeping:** two matches from one fixture do not contain six
+> distinguishable ways for a scene to unfold, so the modes had nothing to specialise on.
+> Three rounds of fixes here — epsilon, selection metric, ball fallback — were each real
+> and each partial, and the remaining gap closed with data alone. Be slow to conclude
+> that an architecture cannot do something when it has been shown very little.
 
 This is also a pedagogical gift. Show the coach: *"the model sees three things that
 could happen here — this position covers all three."* That is precisely how coaches
