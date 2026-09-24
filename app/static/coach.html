@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Footrack Practice Tool</title>
+<style>
+  :root {
+    --grass: #1b3a1b; --grass-dark: #0f1f0f; --line: #c8d6c8;
+    --mark: #ffd166; --ball: #ffffff; --pin: #7bdff2;
+    --text: #e8efe8; --muted: #93a693; --edge: #3c5c3c;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--grass-dark); color: var(--text);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header {
+    padding: 10px 16px; background: #0a160a; display: flex; gap: 14px;
+    align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--edge);
+  }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .02em; }
+  select, button {
+    font: inherit; padding: 7px 12px; border-radius: 8px;
+    border: 1px solid var(--edge); background: #1e3a1e; color: var(--text);
+  }
+  button { cursor: pointer; font-weight: 600; }
+  button:hover { background: #2a4f2a; }
+  button.on { background: var(--mark); color: #1b1b0f; border-color: var(--mark); }
+  .readouts { margin-left: auto; display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
+  .readouts b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .readouts .over { color: #ff8b6b; }
+  main { flex: 1; display: grid; place-items: center; padding: 10px; min-height: 0; }
+  svg { width: 100%; height: 100%; touch-action: none; }
+  footer {
+    padding: 10px 16px; background: #0a160a; border-top: 1px solid var(--edge);
+    display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 13px;
+  }
+  label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  input[type=range] { width: 130px; accent-color: var(--mark); }
+  .applied { color: var(--muted); font-size: 12px; flex: 1; min-width: 200px; }
+  .applied b { color: var(--mark); font-weight: 600; }
+  .mark-label { font-size: 10px; font-weight: 700; fill: #1b1b0f; pointer-events: none; user-select: none; }
+  .hint { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Footrack — practice</h1>
+  <select id="formation"></select>
+  <button id="phase" data-phase="IN_POSSESSION">In possession</button>
+  <button id="reset">Clear pins</button>
+  <div class="readouts">
+    <span>block <b id="spread">–</b></span>
+    <span>width <b id="width">–</b></span>
+    <span>line <b id="lineh">–</b></span>
+  </div>
+</header>
+
+<main>
+  <svg id="pitch" viewBox="0 0 1050 680" xmlns="http://www.w3.org/2000/svg"
+       preserveAspectRatio="xMidYMid meet">
+    <rect width="1050" height="680" fill="var(--grass)"/>
+    <g fill="none" stroke="var(--line)" stroke-width="2" opacity=".8">
+      <rect x="0" y="0" width="1050" height="680"/>
+      <line x1="525" y1="0" x2="525" y2="680"/>
+      <circle cx="525" cy="340" r="91.5"/>
+      <rect x="0" y="138.4" width="165" height="403.2"/>
+      <rect x="0" y="248.4" width="55" height="183.2"/>
+      <rect x="885" y="138.4" width="165" height="403.2"/>
+      <rect x="995" y="248.4" width="55" height="183.2"/>
+    </g>
+    <circle cx="525" cy="340" r="3" fill="var(--line)"/>
+    <text x="525" y="26" text-anchor="middle" fill="var(--muted)" font-size="13">
+      attacking this way →
+    </text>
+    <g id="marks"></g>
+    <g id="ball"></g>
+  </svg>
+</main>
+
+<footer>
+  <label>line height
+    <input type="range" id="line" min="-30" max="30" value="0">
+    <span id="lineval" style="color:var(--text);width:34px">0</span>
+  </label>
+  <span class="hint">drag the ball · drag a player to pin them</span>
+  <div class="applied" id="applied"></div>
+</footer>
+
+<script>
+const M2PX = 10, HALF_L = 52.5, HALF_W = 34;
+const toSvg = (x, y) => [(x + HALF_L) * M2PX, (HALF_W - y) * M2PX];
+const toM = (px, py) => [px / M2PX - HALF_L, HALF_W - py / M2PX];
+
+const $ = id => document.getElementById(id);
+const svg = $("pitch");
+
+let ball = [0, 0];
+let pinned = {};
+let dragging = null;     // "ball" | slot index
+let state = null;
+
+async function boot() {
+  const meta = await (await fetch("/api/formations")).json();
+  $("formation").innerHTML = meta.formations
+    .map(f => `<option value="${f.name}">${f.name}</option>`).join("");
+  update();
+}
+
+async function update() {
+  const body = {
+    formation: $("formation").value,
+    ball_x: ball[0], ball_y: ball[1],
+    phase: $("phase").dataset.phase,
+    line_height: Number($("line").value) / 100,
+    pinned,
+  };
+  const res = await fetch("/api/shape", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  state = await res.json();
+  render();
+}
+
+function render() {
+  const [bx, by] = toSvg(ball[0], ball[1]);
+  $("ball").innerHTML = `
+    <circle cx="${bx}" cy="${by}" r="9" fill="var(--ball)" stroke="#000"
+            stroke-width="2" data-drag="ball" style="cursor:grab"/>`;
+
+  $("marks").innerHTML = state.marks.map(m => {
+    const [x, y] = toSvg(m.x, m.y);
+    const fill = m.pinned ? "var(--pin)" : "var(--mark)";
+    return `<g data-drag="${m.slot}" style="cursor:grab">
+      <circle cx="${x}" cy="${y}" r="16" fill="${fill}" stroke="#0a160a" stroke-width="2"/>
+      <text class="mark-label" x="${x}" y="${y + 4}" text-anchor="middle">${m.label}</text>
+    </g>`;
+  }).join("");
+
+  const s = state.shape;
+  $("spread").textContent = `${s.vertical_spread_m}m`;
+  // The compactness limit only binds out of possession, so only warn there —
+  // a 52m block in possession is a normal attacking shape, not a fault.
+  const compactApplies = state.phase === "OUT_OF_POSSESSION";
+  $("spread").className =
+    compactApplies && s.vertical_spread_m > s.compact_limit_m ? "over" : "";
+  $("width").textContent = `${s.width_m}m`;
+  $("lineh").textContent = `${s.line_height_m}m`;
+
+  $("applied").innerHTML = state.applied.length
+    ? state.applied.map(a => `<b>${a.name}</b> ${a.detail || ""}`).join(" · ")
+    : "";
+}
+
+function point(evt) {
+  const p = svg.createSVGPoint();
+  p.x = evt.clientX; p.y = evt.clientY;
+  const q = p.matrixTransform(svg.getScreenCTM().inverse());
+  return toM(Math.max(0, Math.min(1050, q.x)), Math.max(0, Math.min(680, q.y)));
+}
+
+svg.addEventListener("pointerdown", e => {
+  const g = e.target.closest("[data-drag]");
+  if (!g) return;
+  dragging = g.dataset.drag;
+  svg.setPointerCapture(e.pointerId);
+});
+
+svg.addEventListener("pointermove", e => {
+  if (dragging === null) return;
+  const xy = point(e);
+  if (dragging === "ball") ball = xy;
+  else pinned[Number(dragging)] = xy;
+  update();
+});
+
+svg.addEventListener("pointerup", () => { dragging = null; });
+
+$("formation").onchange = () => { pinned = {}; update(); };
+$("line").oninput = () => { $("lineval").textContent = $("line").value; update(); };
+$("reset").onclick = () => { pinned = {}; update(); };
+$("phase").onclick = () => {
+  const b = $("phase");
+  const on = b.dataset.phase === "IN_POSSESSION";
+  b.dataset.phase = on ? "OUT_OF_POSSESSION" : "IN_POSSESSION";
+  b.textContent = on ? "Out of possession" : "In possession";
+  b.classList.toggle("on", on);
+  update();
+};
+
+boot();
+</script>
+</body>
+</html>

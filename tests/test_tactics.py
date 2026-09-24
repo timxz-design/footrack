@@ -86,9 +86,16 @@ class TestFormations:
         """A declared formation is drawn wider than teams actually play; the
         measured correction takes mean deviation 17.3m -> 14.0m."""
         assert SHAPE_CALIBRATION == (0.65, 0.80)
+        declared = deform(FOUR_THREE_THREE, CENTRE, Phase.IN_POSSESSION)
+        fitted = deform(FOUR_THREE_THREE, CENTRE, Phase.IN_POSSESSION, calibrated=True)
+        assert np.ptp(fitted[:, 0]) < np.ptp(declared[:, 0])
+
+    def test_declared_shape_is_the_default(self):
+        """A practice tool instructs rather than predicts: shrinking the shape
+        would teach a compressed version of what the coach drew."""
         out = deform(FOUR_THREE_THREE, CENTRE, Phase.IN_POSSESSION)
-        raw_span = np.ptp(FOUR_THREE_THREE.reference_metres()[:, 0])
-        assert np.ptp(out[:, 0]) < raw_span
+        ref = FOUR_THREE_THREE.reference_metres()
+        np.testing.assert_allclose(np.ptp(out[:, 1]), np.ptp(ref[:, 1]), rtol=0.2)
 
 
 class TestSlotAssignment:

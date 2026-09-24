@@ -149,10 +149,14 @@ FORMATIONS: dict[str, Formation] = {
 # spread is 53m deep and 40m wide against the template's 69m and 54m.
 #
 # Calibrated by sweep against observed positions: these factors take mean
-# deviation from 17.3m to 14.0m, which matches the 14.1m ceiling measured for a
-# *perfect* team-specific ball-conditioned shape. The declared positions are
-# left intact, since they are the coach's statement of intent; this corrects
-# only for intent being drawn wider than play.
+# deviation from 17.3m to 14.0m, matching the 14.1m ceiling measured for a
+# *perfect* team-specific ball-conditioned shape.
+#
+# **Apply this only when predicting where players will be, never when telling
+# them where to stand.** For the practice tool the declared shape is the
+# instruction, not an estimate of it, and shrinking it would teach players a
+# compressed version of what the coach drew. Same numbers, opposite purpose —
+# which is the distinction the whole product direction turns on (PLAN.md §1.0).
 SHAPE_CALIBRATION = (0.65, 0.80)
 
 # Phase adjustments, applied after ball shifting.
@@ -172,12 +176,18 @@ def deform(
     ball_xy: np.ndarray | None,
     phase: Phase = Phase.UNKNOWN,
     line_height: float = 0.0,
+    calibrated: bool = False,
 ) -> np.ndarray:
     """(11, 2) target positions in metres for the advised team.
 
     ``ball_xy`` is in metres, centre-origin, with the advised team attacking +x.
     ``line_height`` shifts the whole block up or down the pitch in normalised
     units — the coach's dial for how high to play.
+
+    ``calibrated`` shrinks the shape toward observed match averages
+    (SHAPE_CALIBRATION). Use it when **predicting** where players will be; leave
+    it off when **instructing** them where to stand, which is the practice
+    tool's case — there the declared shape is the target, not an estimate.
 
     The block *shifts with* the ball rather than chasing it: each slot moves by
     a gain on the ball's position, so shape is preserved while the team slides
@@ -218,9 +228,10 @@ def deform(
     out[:, 0] = np.clip(out[:, 0], -0.99, 0.99)
     out[:, 1] = np.clip(out[:, 1], -0.99, 0.99)
 
+    sx, sy = SHAPE_CALIBRATION if calibrated else (1.0, 1.0)
     metres = np.empty_like(out)
-    metres[:, 0] = out[:, 0] * pitch.HALF_LENGTH * SHAPE_CALIBRATION[0]
-    metres[:, 1] = out[:, 1] * pitch.HALF_WIDTH * SHAPE_CALIBRATION[1]
+    metres[:, 0] = out[:, 0] * pitch.HALF_LENGTH * sx
+    metres[:, 1] = out[:, 1] * pitch.HALF_WIDTH * sy
     return metres
 
 

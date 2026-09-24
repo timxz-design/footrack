@@ -22,7 +22,45 @@ Status: planning. Last updated 2026-09-21.
 | Target club | Senior amateur / semi-pro | Drives the capability-constraint requirement (§3.3) |
 | Effort | ~20h/week, sustained | Roadmap sliced into independently demoable wins |
 
-### 1.1 v1 product definition
+### 1.0 Direction: the practice tool (decided 2026-09-24)
+
+**The product is the on-pitch practice tool, not the analysis tool.** Two products were
+being built at once; they share only a tracking layer and do not need each other.
+
+**Why the rules layers are sufficient.** The measurement that a formation template cannot
+predict elite positions better than ~14m (§L1, MODEL.md) was taken as a limit of the
+rules approach. It is irrelevant here. In a drill the coach *declares* the shape — the
+template is not predicting anything, it **is** the instruction, and a player 14m off is
+14m off. Same code, opposite epistemic status.
+
+**What the practice tool does not need:**
+
+- The world model. Formation plus constraints produce the marks.
+- Manual override with re-solve. Pin one position and re-run L1/L2 for the other ten;
+  this was built on the masked-agent head but a constraint solver does the same job.
+- Any data. Not PFF, not Veo export, not the 29-match corpus. For shadow play it does
+  not even need live tracking — the coach says where the ball is.
+
+Everything that has been blocking progress blocks the *analysis* product. None of it
+blocks this one.
+
+**Shelved, not deleted:** `model.py`, `dataset.py`, `features.py`, `cache.py`,
+`sources.py`, `events.py`, `labeling.py` and the labelling server remain committed and
+tested for if the analysis product is ever revived.
+
+**The honest caveat:** this product's moat is not algorithmic. Anyone can write a
+formation template. The hard parts are projection physics, calibration, latency and
+whether coaches actually use it — execution, not cleverness.
+
+**Staging:**
+
+| | Needs |
+|---|---|
+| v0 — live tactics board on a tablet | Nothing |
+| v1 — projected onto grass, coach drives the ball | Projector + calibration |
+| v2 — deviation-only marks for players out of position | Live tracking (Veo or vests) |
+
+### 1.1 Superseded — former v1 product definition
 
 **Primary user: the analyst (you). Surface: a desktop tool over replay data.**
 

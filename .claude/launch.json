@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["-m", "uvicorn", "app.server:app", "--port", "8000", "--reload"],
       "port": 8000
+    },
+    {
+      "name": "practice",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.coach:app", "--port", "8100", "--reload"],
+      "port": 8100
     }
   ]
 }

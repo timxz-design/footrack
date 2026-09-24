@@ -86,8 +86,10 @@ def propose(
     if isinstance(formation, str):
         formation = FORMATIONS[formation]
 
-    # L1 — shape, shifted with the ball and adjusted for phase.
-    targets = deform(formation, ball_xy, phase, line_height)
+    # L1 — shape, shifted with the ball and adjusted for phase. Calibrated here
+    # because this path *predicts* where players should already be, and is
+    # scored against where they actually were.
+    targets = deform(formation, ball_xy, phase, line_height, calibrated=True)
 
     # Match players to slots by who is closest to occupying them. Slot order is
     # arbitrary with respect to who is on the pitch, so pairing index-to-index
